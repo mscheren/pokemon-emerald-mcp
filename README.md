@@ -115,7 +115,6 @@ One tile of movement ≈ 16 frames hold + 20 frames wait.
 | Tool | Parameters | Description |
 | ------ | ------------ | ------------- |
 | `observe` | — | **Primary tool** — game state text + screenshot image in one call |
-| `get_observation` | — | Text-only game state; use only when image is not needed |
 | `get_extended_state` | — | Bag items and PC box occupancy |
 
 ### Actions
@@ -129,17 +128,36 @@ One tile of movement ≈ 16 frames hold + 20 frames wait.
 
 Valid buttons: `A`, `B`, `UP`, `DOWN`, `LEFT`, `RIGHT`, `START`, `SELECT`, `L`, `R`
 
-### Knowledge base
+### Knowledge base — read
 
 | Tool | Parameters | Description |
 | ------ | ------------ | ------------- |
 | `query_knowledge` | `query`, `limit=5` | Search discoveries by keyword |
-| `record_discovery` | `category`, `title`, `description`, `map_id`, `x`, `y`, `metadata` | Save a game discovery |
-| `record_progress` | `event_type`, `event_name`, `details` | Log a milestone (badge/capture/evolution) |
-| `record_strategy` | `situation`, `approach`, `outcome`, `effectiveness` | Save a battle or navigation strategy |
-| `record_pokemon` | `species_id`, `species_name`, `type_primary`, `type_secondary`, `notes` | Store species knowledge |
-| `add_guidance` | `instruction`, `context`, `priority` | Add an instruction (surfaced in every `observe`) |
+| `search_strategies` | `keyword`, `limit=5` | Search strategies by keyword |
+| `get_pokemon_info` | `species_id` | Retrieve stored species knowledge |
+| `get_active_guidance` | — | List all active guidance instructions |
+| `get_progress_summary` | — | Summarise badges, captures, evolutions, milestones |
+| `get_map_tiles` | `map_id` | Retrieve all recorded tiles for a map |
+
+### Knowledge base — write
+
+| Tool | Parameters | Description |
+| ------ | ------------ | ------------- |
+| `record_discovery` | `category`, `title`, `description`, `map_id?`, `x?`, `y?`, `metadata?` | Save a game discovery |
+| `record_progress` | `event_type`, `event_name`, `details?` | Log a milestone (badge/capture/evolution) |
+| `record_strategy` | `situation`, `approach`, `outcome?`, `effectiveness?` | Save a battle or navigation strategy |
+| `record_pokemon` | `species_id`, `species_name`, `type_primary?`, `type_secondary?`, `notes?` | Store species knowledge |
+| `add_guidance` | `instruction`, `context?`, `priority?` | Add an instruction (surfaced in every `observe`) |
 | `update_guidance_status` | `guidance_id`, `status` | Mark guidance `completed` or `superseded` |
+| `record_tile` | `map_id`, `x`, `y`, `tile_type`, `notes?` | Record terrain type at a map coordinate |
+
+### PokeAPI (cached)
+
+| Tool | Parameters | Description |
+| ------ | ------------ | ------------- |
+| `lookup_pokemon` | `species_id` | Types, base stats, and evolution chain |
+| `lookup_move` | `move_id` | Move name, type, power, accuracy, PP |
+| `lookup_item` | `item_id` | Item name, category, and effect |
 
 Knowledge base contents are automatically injected into every `observe` response:
 active guidance entries appear in a `GUIDANCE` section; up to 3 relevant discoveries

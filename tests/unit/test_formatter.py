@@ -67,46 +67,38 @@ class TestObservationFormatter:
         assert "Route 101" in text
 
     def test_format_does_not_include_decision_schema(self):
-        # JSON schema is unnecessary if running via MCP.
+        # The JSON schema is in CLAUDE.md (ingested once), not repeated per iteration.
         obs = _make_observation()
         text = ObservationFormatter().format(obs, [], [])
         assert "YOUR DECISION" not in text
         assert "action_type" not in text
 
-    def test_format_screenshot_path_shown(self, tmp_path):
+    def test_format_screenshot_no_path_in_text(self, tmp_path):
+        # Screenshot is delivered inline as an MCP image block — path must not appear in text.
         png = tmp_path / "frame.png"
         png.write_bytes(b"")
         obs = _make_observation(screenshot_path=png)
         text = ObservationFormatter().format(obs, [], [])
-        assert "frame.png" in text
+        assert "frame.png" not in text
 
-    def test_format_screenshot_heading_present(self, tmp_path):
+    def test_format_screenshot_no_heading_in_text(self, tmp_path):
         png = tmp_path / "frame.png"
         png.write_bytes(b"")
         obs = _make_observation(screenshot_path=png)
         text = ObservationFormatter().format(obs, [], [])
-        assert "## CURRENT SCREENSHOT" in text
+        assert "## CURRENT SCREENSHOT" not in text
 
-    def test_format_screenshot_read_instruction_present(self, tmp_path):
+    def test_format_screenshot_no_read_instruction(self, tmp_path):
         png = tmp_path / "frame.png"
         png.write_bytes(b"")
         obs = _make_observation(screenshot_path=png)
         text = ObservationFormatter().format(obs, [], [])
-        assert "Read this file with the Read tool" in text
+        assert "Read this file with the Read tool" not in text
 
-    def test_format_screenshot_heading_comes_before_game_state(self, tmp_path):
-        png = tmp_path / "frame.png"
-        png.write_bytes(b"")
-        obs = _make_observation(screenshot_path=png)
-        text = ObservationFormatter().format(obs, [], [])
-        screenshot_pos = text.index("## CURRENT SCREENSHOT")
-        game_state_pos = text.index("POKEMON EMERALD")
-        assert screenshot_pos < game_state_pos
-
-    def test_format_no_screenshot_shows_degraded_message(self):
+    def test_format_no_screenshot_shows_warning(self):
         obs = _make_observation(screenshot_path=None)
         text = ObservationFormatter().format(obs, [], [])
-        assert "degraded mode" in text
+        assert "No screenshot" in text
 
     def test_hp_bar_full(self):
         bar = ObservationFormatter()._hp_bar(20, 20)
@@ -119,7 +111,6 @@ class TestObservationFormatter:
     def test_hp_bar_zero_max(self):
         bar = ObservationFormatter()._hp_bar(0, 0)
         assert "----------" in bar
-
 
 class TestDecisionParser:
     def _parser(self):
@@ -233,3 +224,54 @@ class TestFormatterExtendedState:
         text = ObservationFormatter().format(obs, [], [])
         assert "BAG:" not in text
         assert "PC BOXES:" not in text
+
+
+class TestNeighboursSection:
+    """Tests for the Neighbours: line replacing the ASCII MAP TILES grid."""
+
+    def _tiles_around(self, px=5, py=7):
+        """Tiles for all four cardinal neighbours of (px, py)."""
+        return [
+            {"x": px,     "y": py - 1, "tile_type": "ledge_south", "notes": None},  # N
+            {"x": px,     "y": py + 1, "tile_type": "grass",        "notes": None},  # S
+            {"x": px + 1, "y": py,     "tile_type": "passable",     "notes": None},  # E
+            {"x": px - 1, "y": py,     "tile_type": "blocked",      "notes": None},  # W
+        ]
+
+    def test_format_includes_agent_protocol(self):
+        obs = _make_observation()
+        text = ObservationFormatter().format(obs, [], [])
+        assert "AGENT PROTOCOL" in text
+
+    def test_neighbours_line_present_when_tiles_passed(self):
+        obs = _make_observation()
+        text = ObservationFormatter().format(obs, [], [], map_tiles=self._tiles_around())
+        assert "Neighbours:" in text
+
+    def test_neighbours_correct_values(self):
+        # _make_observation() uses player_x=5, player_y=7
+        obs = _make_observation()
+        text = ObservationFormatter().format(obs, [], [], map_tiles=self._tiles_around())
+        assert "N=ledge_south" in text
+        assert "S=grass" in text
+        assert "E=passable" in text
+        assert "W=blocked" in text
+
+    def test_neighbours_unknown_when_not_recorded(self):
+        obs = _make_observation()
+        text = ObservationFormatter().format(obs, [], [], map_tiles=[])
+        assert "N=?" in text
+        assert "S=?" in text
+        assert "E=?" in text
+        assert "W=?" in text
+
+    def test_no_neighbours_line_when_map_tiles_is_none(self):
+        obs = _make_observation()
+        text = ObservationFormatter().format(obs, [], [], map_tiles=None)
+        assert "Neighbours:" not in text
+
+    def test_no_map_tiles_ascii_grid(self):
+        obs = _make_observation()
+        # MAP TILES ascii grid should never appear regardless of tile data
+        text = ObservationFormatter().format(obs, [], [], map_tiles=self._tiles_around())
+        assert "MAP TILES" not in text

@@ -61,7 +61,6 @@ For Claude Code, use `/mcp` inside a session to confirm `pokemon-agent` appears 
 | Tool | Parameters | Description |
 | ------ | ------------ | ------------- |
 | `observe` | — | **Primary tool** — game state text + screenshot image in one call |
-| `get_observation` | — | Text-only game state; use only when image is not needed |
 | `get_extended_state` | — | Bag items and PC box occupancy |
 
 ### Actions
@@ -73,17 +72,36 @@ For Claude Code, use `/mcp` inside a session to confirm `pokemon-agent` appears 
 | `wait` | `frames: int = 60` | Idle for N emulated frames (~60 fps) |
 | `execute_sequence` | `steps: list[dict]` | Run a multi-step input sequence |
 
-### Knowledge base
+### Knowledge base — read
 
 | Tool | Parameters | Description |
 | ------ | ------------ | ------------- |
 | `query_knowledge` | `query: str`, `limit: int = 5` | Search discoveries by keyword |
+| `search_strategies` | `keyword: str`, `limit: int = 5` | Search strategies by keyword |
+| `get_pokemon_info` | `species_id: int` | Retrieve stored species knowledge |
+| `get_active_guidance` | — | List all active guidance instructions |
+| `get_progress_summary` | — | Summarise badges, captures, evolutions, milestones |
+| `get_map_tiles` | `map_id: int` | Retrieve all recorded tiles for a map |
+
+### Knowledge base — write
+
+| Tool | Parameters | Description |
+| ------ | ------------ | ------------- |
 | `record_discovery` | `category`, `title`, `description`, `map_id?`, `x?`, `y?`, `metadata?` | Save a game discovery |
 | `record_progress` | `event_type`, `event_name`, `details?` | Log a milestone (`badge`/`capture`/`evolution`/`milestone`) |
 | `record_strategy` | `situation`, `approach`, `outcome?`, `effectiveness?` | Save a battle or navigation strategy |
 | `record_pokemon` | `species_id`, `species_name`, `type_primary?`, `type_secondary?`, `notes?` | Store species knowledge |
 | `add_guidance` | `instruction`, `context?`, `priority?` | Add an instruction surfaced in every `observe` |
 | `update_guidance_status` | `guidance_id: int`, `status: str` | Mark guidance `completed` or `superseded` |
+| `record_tile` | `map_id: int`, `x: int`, `y: int`, `tile_type: str`, `notes?: str` | Record terrain type at a map coordinate |
+
+### PokeAPI (cached)
+
+| Tool | Parameters | Description |
+| ------ | ------------ | ------------- |
+| `lookup_pokemon` | `species_id: int` | Types, base stats, and evolution chain |
+| `lookup_move` | `move_id: int` | Move name, type, power, accuracy, PP |
+| `lookup_item` | `item_id: int` | Item name, category, and effect |
 
 ### Using `observe` (recommended workflow)
 

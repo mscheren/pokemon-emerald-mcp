@@ -15,6 +15,46 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# Tile type to grid character mapping
+_TILE_CHARS: dict[str, str] = {
+    "passable":      ".",
+    "blocked":       "X",
+    "grass":         "~",
+    "water":         "W",
+    "ledge_south":   "v",
+    "ledge_north":   "^",
+    "ledge_west":    "<",
+    "ledge_east":    ">",
+    "npc":           "N",
+    "item":          "i",
+    "rock_smash":    "r",
+    "rock_strength": "R",
+    "tree_cut":      "T",
+    "unknown":       "?",
+}
+
+_AGENT_PROTOCOL = """\
+AGENT PROTOCOL
+  Navigation : The screenshot is your PRIMARY navigation guide.
+               Your current tile is highlighted with a yellow border in the image.
+               Known tile types are labelled in each tile's top-left corner.
+               Take ONE step at a time in unknown terrain — observe after each step.
+               Only batch movement on routes already confirmed passable.
+  Map memory : After every move attempt call record_tile(map_id, x, y, tile_type).
+               This is not optional! Build your spatial map by recording every explored tile.
+               tile_type: passable blocked grass water ledge_south ledge_north
+                          ledge_west ledge_east npc item rock_smash rock_strength
+                          tree_cut unknown
+               Before navigating call get_map_tiles(map_id) to recall known terrain.
+               Prefer fully passable routes, pass grass tiles to gain EXP or catch Pokemon.
+  Knowledge  : Record NPCs, items, events with record_discovery().
+               Record badges, captures, evolutions with record_progress().
+               Use lookup_pokemon() / lookup_move() before battles for type advantage.
+  Guidance   : get_active_guidance() shows current objectives with their IDs.
+               Mark done objectives: update_guidance_status(id, 'completed').\
+"""
+
+
 class ObservationFormatter:
     """Formats game observations into text prompts for agent."""
 
@@ -23,6 +63,7 @@ class ObservationFormatter:
         observation: "Observation",
         active_guidance: list[dict],
         relevant_knowledge: list[dict],
+        map_tiles: list[dict] | None = None,
     ) -> str:
         """Produce the formatted observation text for agent.
 
@@ -30,12 +71,18 @@ class ObservationFormatter:
             observation: Current game observation including state and screenshot.
             active_guidance: Active user guidance entries from the knowledge base.
             relevant_knowledge: Relevant discoveries from the knowledge base.
+            map_tiles: All recorded tiles for the current map, or None to omit
+                the MAP TILES section.
 
         Returns:
             Multi-line string ready to be printed for agent to read.
         """
         gs = observation.game_state
         lines: list[str] = []
+
+        # Agent protocol — always first so the agent always has it in view
+        lines.append(_AGENT_PROTOCOL)
+        lines.append("")
 
         # If screenshot is missing, warn at the top — otherwise the image block is already inline
         if observation.screenshot_path is None:
@@ -63,6 +110,8 @@ class ObservationFormatter:
         else:
             lines.append("  Badges: None yet")
         lines.append(f"  In Battle: {'YES' if gs.in_battle else 'No'}")
+        if map_tiles is not None:
+            lines.append(self._format_neighbours(gs.player_x, gs.player_y, map_tiles))
         lines.append(f"  Can Save: {'Yes' if gs.can_save else 'No'}")
         lines.append("")
 
@@ -125,6 +174,25 @@ class ObservationFormatter:
             lines.append("")
 
         return "\n".join(lines)
+
+    def _format_neighbours(
+        self,
+        player_x: int,
+        player_y: int,
+        tiles: list[dict],
+    ) -> str:
+        """Return the four cardinal neighbour tile types as a single line.
+
+        Unknown tiles (not yet recorded) are shown as '?'.
+        """
+        lookup: dict[tuple[int, int], str] = {
+            (t["x"], t["y"]): t["tile_type"] for t in tiles
+        }
+        n = lookup.get((player_x, player_y - 1), "?")
+        s = lookup.get((player_x, player_y + 1), "?")
+        e = lookup.get((player_x + 1, player_y), "?")
+        w = lookup.get((player_x - 1, player_y), "?")
+        return f"  Neighbours: N={n}  S={s}  E={e}  W={w}"
 
     def _hp_bar(self, current: int, max_hp: int, width: int = 10) -> str:
         if max_hp == 0:

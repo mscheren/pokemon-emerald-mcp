@@ -67,3 +67,19 @@ CREATE TABLE IF NOT EXISTS pokeapi_cache (
     data       TEXT NOT NULL,
     timestamp  DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS map_tiles (
+    map_id    INTEGER NOT NULL,
+    x         INTEGER NOT NULL,
+    y         INTEGER NOT NULL,
+    tile_type TEXT NOT NULL CHECK(tile_type IN (
+                  'passable','blocked',
+                  'ledge_south','ledge_north','ledge_west','ledge_east',
+                  'grass','water','npc','item',
+                  'rock_smash','rock_strength','tree_cut',
+                  'unknown'
+              )),
+    notes     TEXT,  -- optional annotation, e.g. NPC name, item name
+    PRIMARY KEY (map_id, x, y)
+);
+CREATE INDEX IF NOT EXISTS idx_map_tiles_map_id ON map_tiles(map_id);

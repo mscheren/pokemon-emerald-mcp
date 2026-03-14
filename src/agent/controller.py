@@ -23,6 +23,20 @@ logger = logging.getLogger(__name__)
 # Default screenshot directory (relative to project root)
 SCREENSHOTS_DIR = Path("data/screenshots")
 
+def _wsl_to_windows_path(path: Path) -> str:
+    """Convert a WSL2 /mnt/X/... path to its Windows equivalent X:\\...
+
+    When mGBA runs on Windows and the agent runs in WSL2, screenshot paths
+    must be translated before being sent to Lua so Windows can write the file.
+    Non-/mnt/ paths are returned unchanged.
+    """
+    parts = path.parts  # ('/', 'mnt', 'c', 'Users', ...)
+    if len(parts) >= 3 and parts[0] == "/" and parts[1] == "mnt" and len(parts[2]) == 1:
+        drive = parts[2].upper()
+        rest = "\\".join(parts[3:])
+        return f"{drive}:\\{rest}"
+    return str(path)
+
 # File-based IPC paths for CLI agent integration
 # The agent reads OBSERVATION_FILE and writes DECISION_FILE each turn.
 OBSERVATION_FILE = Path("data/current_observation.txt")
@@ -91,7 +105,8 @@ class GameController:
             RuntimeError: If Lua reports a screenshot failure.
         """
         path = self.screenshots_dir / f"frame_{frame_number:08d}.png"
-        payload = await self.mgba_client.capture_screenshot(str(path))
+        lua_path = _wsl_to_windows_path(path)
+        payload = await self.mgba_client.capture_screenshot(lua_path)
         if payload.get("status") != "ok":
             raise RuntimeError(f"Screenshot failed: {payload.get('error_message', 'unknown error')}")
         # Poll for file flush — on WSL2, Lua's response can arrive before the OS

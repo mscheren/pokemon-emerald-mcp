@@ -22,6 +22,8 @@ class TestRequestScreenshot:
             {"status": "ok", "path": str(tmp_path / "screenshots" / "frame_00000100.png"), "width": 240, "height": 160},
             tmp_path,
         )
+        (tmp_path / "screenshots").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "screenshots" / "frame_00000100.png").write_bytes(b"")
         path = await ctrl.request_screenshot(100)
         assert path.name == "frame_00000100.png"
 
@@ -30,6 +32,8 @@ class TestRequestScreenshot:
             {"status": "ok", "path": "/tmp/x.png", "width": 240, "height": 160},
             tmp_path,
         )
+        (tmp_path / "screenshots").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "screenshots" / "frame_00000001.png").write_bytes(b"")
         path = await ctrl.request_screenshot(1)
         assert isinstance(path, Path)
 
@@ -46,6 +50,7 @@ class TestRequestScreenshot:
         client.capture_screenshot = AsyncMock(return_value={"status": "ok", "path": "/x.png"})
         screenshots_dir = tmp_path / "screenshots"
         ctrl = GameController(mgba_client=client, screenshots_dir=screenshots_dir)
+        (screenshots_dir / "frame_00000042.png").write_bytes(b"")
         await ctrl.request_screenshot(42)
         expected_path = str(screenshots_dir / "frame_00000042.png")
         client.capture_screenshot.assert_called_once_with(expected_path)

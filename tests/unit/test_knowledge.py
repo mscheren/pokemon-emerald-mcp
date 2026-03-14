@@ -22,8 +22,8 @@ async def kb(tmp_path):
 class TestSchema:
     """Verify that initialize() creates all expected tables and indexes."""
 
-    async def test_all_five_tables_exist(self, kb):
-        """All 5 tables defined in schema.sql must be present after initialize()."""
+    async def test_all_tables_exist(self, kb):
+        """All tables defined in schema.sql must be present after initialize()."""
         conn = kb._require_conn()
         async with conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
@@ -36,6 +36,7 @@ class TestSchema:
             "pokemon_knowledge",
             "progress",
             "pokeapi_cache",
+            "map_tiles",
         }
         assert expected == names
 
@@ -364,3 +365,38 @@ class TestProgress:
     async def test_record_returns_row_id(self, kb):
         """record_progress() must return the auto-incremented row id."""
         assert await kb.record_progress("badge", "Stone Badge") == 1
+
+
+class TestMapTiles:
+    """Tests for record_tile() and get_map_tiles()."""
+
+    async def test_record_tile_inserts(self, kb):
+        """record_tile() stores a tile retrievable via get_map_tiles()."""
+        await kb.record_tile(map_id=1800, x=5, y=3, tile_type="passable", notes="open path")
+        tiles = await kb.get_map_tiles(1800)
+        assert len(tiles) == 1
+        assert tiles[0]["x"] == 5
+        assert tiles[0]["y"] == 3
+        assert tiles[0]["tile_type"] == "passable"
+        assert tiles[0]["notes"] == "open path"
+
+    async def test_record_tile_upserts(self, kb):
+        """Re-recording the same (map_id, x, y) replaces the tile_type."""
+        await kb.record_tile(map_id=1800, x=5, y=3, tile_type="unknown")
+        await kb.record_tile(map_id=1800, x=5, y=3, tile_type="grass")
+        tiles = await kb.get_map_tiles(1800)
+        assert len(tiles) == 1
+        assert tiles[0]["tile_type"] == "grass"
+
+    async def test_get_map_tiles_empty(self, kb):
+        """get_map_tiles() returns [] for a map with no recorded tiles."""
+        assert await kb.get_map_tiles(9999) == []
+
+    async def test_get_map_tiles_filters_by_map_id(self, kb):
+        """Tiles from map A must not appear when querying map B."""
+        await kb.record_tile(map_id=1800, x=1, y=1, tile_type="passable")
+        await kb.record_tile(map_id=900, x=2, y=2, tile_type="blocked")
+        tiles_1800 = await kb.get_map_tiles(1800)
+        tiles_900 = await kb.get_map_tiles(900)
+        assert all(t["x"] == 1 and t["y"] == 1 for t in tiles_1800)
+        assert all(t["x"] == 2 and t["y"] == 2 for t in tiles_900)

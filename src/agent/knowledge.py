@@ -3,6 +3,7 @@
 Stores game discoveries, user guidance, strategies, Pokemon knowledge,
 and progress milestones accumulated during gameplay.
 """
+
 import json
 import logging
 from pathlib import Path
@@ -116,9 +117,7 @@ class KnowledgeBase:
             await conn.commit()
             return cursor.lastrowid
 
-    async def get_relevant_knowledge(
-        self, context: str, limit: int = 3
-    ) -> list[dict]:
+    async def get_relevant_knowledge(self, context: str, limit: int = 3) -> list[dict]:
         """Search discoveries by keyword in title or description.
 
         Args:
@@ -389,3 +388,48 @@ class KnowledgeBase:
                 elif et == "evolution":
                     summary["evolutions"] += 1
         return summary
+
+    async def record_tile(
+        self,
+        map_id: int,
+        x: int,
+        y: int,
+        tile_type: str,
+        notes: Optional[str] = None,
+    ) -> None:
+        """Insert or replace a tile record for the given map coordinate.
+
+        Args:
+            map_id: Map identifier (same as ``GameState.map_id``).
+            x: Tile X coordinate.
+            y: Tile Y coordinate.
+            tile_type: One of ``passable``, ``blocked``, ``ledge_south``,
+                ``ledge_north``, ``ledge_west``, ``ledge_east``, ``grass``,
+                ``water``, ``npc``, ``item``, ``rock_smash``, ``rock_strength``,
+                ``tree_cut``, or ``unknown``.
+            notes: Optional free-text annotation (e.g. NPC name, item name).
+        """
+        conn = self._require_conn()
+        await conn.execute(
+            """INSERT OR REPLACE INTO map_tiles (map_id, x, y, tile_type, notes)
+               VALUES (?, ?, ?, ?, ?)""",
+            (map_id, x, y, tile_type, notes),
+        )
+        await conn.commit()
+
+    async def get_map_tiles(self, map_id: int) -> list[dict]:
+        """Return all recorded tiles for a map.
+
+        Args:
+            map_id: Map identifier to query.
+
+        Returns:
+            List of dicts with keys ``x``, ``y``, ``tile_type``, ``notes``,
+            ordered by row (y) then column (x).
+        """
+        conn = self._require_conn()
+        async with conn.execute(
+            "SELECT x, y, tile_type, notes FROM map_tiles WHERE map_id = ? ORDER BY y, x",
+            (map_id,),
+        ) as cursor:
+            return [dict(r) for r in await cursor.fetchall()]

@@ -19,19 +19,21 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP, Image
-from PIL import Image as PILImage
+from PIL import Image as PILImage, ImageDraw, ImageFont
 
 from .controller import GameController
-from .formatter import ObservationFormatter
+from .formatter import ObservationFormatter, _TILE_CHARS
 from .knowledge import KnowledgeBase
 from .mgba_client import MGBAClient
 from .models import GameState, Observation, SequenceStep
+from .pokeapi import PokeAPIClient
 
 logger = logging.getLogger(__name__)
 
 _client: MGBAClient | None = None
 _kb: KnowledgeBase | None = None
 _controller: GameController | None = None
+_pokeapi: PokeAPIClient | None = None
 _screenshot_dir: Path = Path("data/screenshots")
 
 OBSERVATION_FILE = Path("data/current_observation.txt")
@@ -56,18 +58,148 @@ def _get_controller() -> GameController:
     return _controller
 
 
-def _scale_screenshot(path: Path, scale: int = 4) -> bytes:
-    """Return PNG bytes for *path* scaled up by *scale* using nearest-neighbour.
+def _get_pokeapi() -> PokeAPIClient:
+    if _pokeapi is None:
+        raise RuntimeError("MCP server not initialised")
+    return _pokeapi
 
-    GBA native resolution is 240×160 — very hard to interpret at 1:1.
-    4× gives 960×640 which is clearly readable while preserving pixel art edges.
+
+# GBA viewport geometry (at 4× scale: 960×640, 64 px/tile)
+_TILE_PX = 64   # pixels per tile after 4× upscale
+_CAM_COL = 7    # player tile column in the 15-wide viewport (0-indexed)
+_CAM_ROW = 4    # player tile row in the 10-tall viewport (0-indexed)
+# pokeemerald camera formula: HOFS = player_x*16 - DISPLAY_WIDTH/2 (120)
+#                              VOFS = player_y*16 - DISPLAY_HEIGHT/2 (80)
+# → first metatile boundary on screen at x=120−7×16=8 native (32 at 4×)
+#                                        y= 80−4×16=16 native (64 at 4×)
+_GRID_OFFSET_X = 32   # 8 native px → 32 at 4× (HOFS uses DISPLAY_WIDTH/2)
+_GRID_OFFSET_Y = 64   # 16 native px → 64 at 4× (VOFS uses DISPLAY_HEIGHT/2)
+
+# Per-tile-type label colors (RGB) for the screenshot overlay
+_TILE_LABEL_COLORS: dict[str, tuple[int, int, int]] = {
+    "passable":      (0, 220, 0),
+    "blocked":       (220, 50, 50),
+    "grass":         (200, 220, 0),
+    "water":         (0, 150, 255),
+    "ledge_south":   (255, 165, 0),
+    "ledge_north":   (255, 165, 0),
+    "ledge_west":    (255, 165, 0),
+    "ledge_east":    (255, 165, 0),
+    "npc":           (0, 220, 220),
+    "item":          (220, 0, 220),
+    "rock_smash":    (160, 110, 60),
+    "rock_strength": (160, 110, 60),
+    "tree_cut":      (60, 150, 60),
+    "unknown":       (180, 180, 180),
+}
+
+
+_BADGE_SIZE = 32  # px — coloured tile badge square (at 4× scale)
+
+
+def _annotate_screenshot(
+    path: Path,
+    player_x: int,
+    player_y: int,
+    map_tiles: list[dict],
+    scale: int = 4,
+    in_battle: bool = False,
+) -> bytes:
+    """Scale screenshot 4× and overlay tile grid, player marker, and known tile badges.
+
+    When ``in_battle`` is True the function returns the plain upscaled image with no
+    overlay (grid lines and tile markers are meaningless during battle).
+
+    Otherwise draws:
+    - Semi-transparent grid lines at metatile boundaries (offset by camera formula)
+    - Yellow border around the player's tile
+    - 32×32 coloured badge in the top-left of each recorded tile, with centered label
+
+    Args:
+        path: Path to the raw GBA screenshot PNG (240×160).
+        player_x: Player X tile coordinate in game space.
+        player_y: Player Y tile coordinate in game space.
+        map_tiles: Recorded tiles for the current map (from KnowledgeBase).
+        scale: Upscale factor (default 4 → 960×640).
+        in_battle: When True, skip all overlay and return plain upscaled image.
+
+    Returns:
+        PNG bytes of the annotated (or plain) image.
     """
-    with PILImage.open(path) as img:
-        w, h = img.size
-        scaled = img.resize((w * scale, h * scale), PILImage.NEAREST)
+    with PILImage.open(path) as src:
+        w, h = src.size
+        img = src.resize((w * scale, h * scale), PILImage.NEAREST)
+
+    if in_battle:
         buf = io.BytesIO()
-        scaled.save(buf, format="PNG")
+        img.save(buf, format="PNG")
         return buf.getvalue()
+
+    img = img.convert("RGBA")
+    draw = ImageDraw.Draw(img, "RGBA")
+    W, H = img.size  # 960 × 640
+
+    # Grid lines — faint white, semi-transparent, starting at camera offset
+    grid_color = (255, 255, 255, 60)
+    x = _GRID_OFFSET_X
+    while x <= W:
+        draw.line([(x, 0), (x, H - 1)], fill=grid_color, width=1)
+        x += _TILE_PX
+    y = _GRID_OFFSET_Y
+    while y <= H:
+        draw.line([(0, y), (W - 1, y)], fill=grid_color, width=1)
+        y += _TILE_PX
+
+    # Player tile — yellow border
+    px0 = _GRID_OFFSET_X + _CAM_COL * _TILE_PX
+    py0 = _GRID_OFFSET_Y + _CAM_ROW * _TILE_PX
+    draw.rectangle(
+        [px0, py0, px0 + _TILE_PX - 1, py0 + _TILE_PX - 1],
+        outline=(255, 220, 0, 230),
+        width=3,
+    )
+
+    # Known tile badges — 32×32 coloured square with centered label
+    try:
+        font = ImageFont.load_default(size=20)
+    except TypeError:
+        font = ImageFont.load_default()
+
+    for tile in map_tiles:
+        vx = tile["x"] - (player_x - _CAM_COL)
+        vy = tile["y"] - (player_y - _CAM_ROW)
+        if not (0 <= vx < 15 and 0 <= vy < 10):
+            continue
+        char = _TILE_CHARS.get(tile["tile_type"], "?")
+        rgb = _TILE_LABEL_COLORS.get(tile["tile_type"], (180, 180, 180))
+        tx = _GRID_OFFSET_X + vx * _TILE_PX
+        ty = _GRID_OFFSET_Y + vy * _TILE_PX
+
+        # Coloured backing
+        draw.rectangle(
+            [tx, ty, tx + _BADGE_SIZE - 1, ty + _BADGE_SIZE - 1],
+            fill=(*rgb, 200),
+        )
+        # Dark inner rectangle for text contrast
+        draw.rectangle(
+            [tx + 2, ty + 2, tx + _BADGE_SIZE - 3, ty + _BADGE_SIZE - 3],
+            fill=(0, 0, 0, 120),
+        )
+        # Centered label
+        try:
+            bbox = draw.textbbox((0, 0), char, font=font)
+            tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+            text_x = tx + (_BADGE_SIZE - tw) // 2 - bbox[0]
+            text_y = ty + (_BADGE_SIZE - th) // 2 - bbox[1]
+        except AttributeError:
+            text_x = tx + (_BADGE_SIZE - 12) // 2
+            text_y = ty + (_BADGE_SIZE - 14) // 2
+        draw.text((text_x, text_y), char, fill=(255, 255, 255, 255), font=font)
+
+    img = img.convert("RGB")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 # ---------------------------------------------------------------------------
@@ -77,7 +209,7 @@ def _scale_screenshot(path: Path, scale: int = 4) -> bytes:
 
 @asynccontextmanager
 async def _lifespan(server):
-    global _client, _kb, _controller, _screenshot_dir
+    global _client, _kb, _controller, _screenshot_dir, _pokeapi
 
     host = os.environ.get("MGBA_HOST", "127.0.0.1")
     port = int(os.environ.get("MGBA_PORT", "5000"))
@@ -95,10 +227,13 @@ async def _lifespan(server):
     await _kb.initialize()
 
     _controller = GameController(_client, _screenshot_dir)
+    _pokeapi = PokeAPIClient(_kb)
 
     logger.info("MCP server ready")
     yield
 
+    if _pokeapi:
+        await _pokeapi.close()
     if _client:
         await _client.disconnect()
     if _kb:
@@ -122,18 +257,20 @@ async def observe() -> list:
 
     Returns:
         A list with one or two content blocks:
-          - ``{"type": "text",  ...}`` — formatted game state
-          - ``{"type": "image", ...}`` — base64 PNG screenshot (omitted on capture failure)
+        - ``{"type": "image", ...}`` — annotated PNG screenshot (omitted on capture failure)
+        - ``{"type": "text",  ...}`` — formatted game state
     """
     state_data = await _get_client().request_state()
     game_state = GameState.from_dict(state_data)
 
     guidance: list[dict] = []
     knowledge: list[dict] = []
+    map_tiles: list[dict] = []
     try:
         guidance = await _get_kb().get_active_guidance()
         map_key = str(game_state.map_id) if game_state.map_id else "general"
         knowledge = await _get_kb().get_relevant_knowledge(map_key, limit=3)
+        map_tiles = await _get_kb().get_map_tiles(game_state.map_id)
     except Exception:
         pass
 
@@ -144,7 +281,13 @@ async def observe() -> list:
     screenshot_path: Path | None = None
     try:
         screenshot_path = await _get_controller().request_screenshot(game_state.frame_number)
-        screenshot_bytes = _scale_screenshot(screenshot_path)
+        screenshot_bytes = _annotate_screenshot(
+            screenshot_path,
+            game_state.player_x,
+            game_state.player_y,
+            map_tiles,
+            in_battle=game_state.in_battle,
+        )
     except Exception as exc:
         logger.warning("Screenshot capture failed: %s", exc)
 
@@ -153,45 +296,14 @@ async def observe() -> list:
         frame_number=game_state.frame_number,
         screenshot_path=screenshot_path,
     )
-    obs_text = _formatter.format(observation, guidance, knowledge)
+    obs_text = _formatter.format(observation, guidance, knowledge, map_tiles)
     OBSERVATION_FILE.write_text(obs_text)
 
-    content: list = [obs_text]
+    content: list = []
     if screenshot_bytes:
         content.append(Image(data=screenshot_bytes, format="png"))
+    content.append(obs_text)
     return content
-
-
-@mcp.tool()
-async def get_observation() -> str:
-    """Return the current game observation as text (text-only, no screenshot).
-
-    Prefer ``observe()`` which returns both the game state and a screenshot in
-    one unified multimodal call. Use ``get_observation`` only when you want
-    the text state without an image (e.g. for fast status checks).
-    """
-    state_data = await _get_client().request_state()
-    game_state = GameState.from_dict(state_data)
-
-    screenshot_path = None
-
-    guidance: list[dict] = []
-    knowledge: list[dict] = []
-    try:
-        guidance = await _get_kb().get_active_guidance()
-        map_key = str(game_state.map_id) if game_state.map_id else "general"
-        knowledge = await _get_kb().get_relevant_knowledge(map_key, limit=3)
-    except Exception:
-        pass
-
-    observation = Observation(
-        game_state=game_state,
-        frame_number=game_state.frame_number,
-        screenshot_path=screenshot_path,
-    )
-    obs_text = _formatter.format(observation, guidance, knowledge)
-    OBSERVATION_FILE.write_text(obs_text)
-    return obs_text
 
 
 @mcp.tool()
@@ -257,13 +369,165 @@ async def execute_sequence(steps: list[dict]) -> list:
 
 @mcp.tool()
 async def query_knowledge(query: str, limit: int = 5) -> list:
-    """Search the knowledge base for relevant entries.
+    """Search the knowledge base for relevant entries by keyword.
 
     Args:
         query: Keyword to search for in discovery titles and descriptions.
         limit: Maximum number of results to return (default 5).
     """
     return await _get_kb().get_relevant_knowledge(query, limit=limit)
+
+
+@mcp.tool()
+async def search_strategies(keyword: str, limit: int = 5) -> list:
+    """Search recorded strategies by keyword.
+
+    Args:
+        keyword: Substring to match against situation or approach fields.
+        limit: Maximum number of results to return (default 5).
+
+    Returns:
+        List of dicts with ``situation``, ``approach``, ``outcome``,
+        ``effectiveness``, ordered by effectiveness then recency.
+    """
+    return await _get_kb().search_strategies(keyword, limit=limit)
+
+
+@mcp.tool()
+async def get_pokemon_info(species_id: int) -> dict | None:
+    """Retrieve stored knowledge for a Pokemon species.
+
+    Args:
+        species_id: National Pokédex number.
+
+    Returns:
+        Dict with ``species_id``, ``species_name``, ``type_primary``,
+        ``type_secondary``, ``notes``, ``first_encountered``, ``last_seen``,
+        or ``None`` if the species has never been recorded.
+    """
+    return await _get_kb().get_pokemon_knowledge(species_id)
+
+
+@mcp.tool()
+async def get_active_guidance() -> list:
+    """Return all active guidance instructions.
+
+    Guidance is also injected automatically into every ``observe()`` response,
+    but this tool lets you query it explicitly — for example to retrieve the
+    ``id`` needed to call ``update_guidance_status``.
+
+    Returns:
+        List of dicts with ``id``, ``instruction``, ``context``, ``priority``,
+        ``timestamp``, ordered by priority then recency.
+    """
+    return await _get_kb().get_active_guidance()
+
+
+@mcp.tool()
+async def get_progress_summary() -> dict:
+    """Return a summary of all recorded game progress.
+
+    Returns:
+        Dict with keys:
+        - ``badges`` — list of badge names in chronological order
+        - ``captures`` — total number of Pokemon captured
+        - ``milestones`` — total number of milestone events
+        - ``evolutions`` — total number of evolutions recorded
+    """
+    return await _get_kb().get_progress_summary()
+
+
+@mcp.tool()
+async def record_tile(
+    map_id: int,
+    x: int,
+    y: int,
+    tile_type: str,
+    notes: str | None = None,
+) -> dict:
+    """Record what is known about a map tile.
+
+    Call this after every movement attempt to build a persistent spatial map.
+    Re-recording the same (map_id, x, y) with a different tile_type overwrites
+    the previous value.
+
+    Args:
+        map_id: Map identifier (from the current game state).
+        x: Tile X coordinate.
+        y: Tile Y coordinate.
+        tile_type: One of ``passable``, ``blocked``, ``ledge_south``,
+            ``ledge_north``, ``ledge_west``, ``ledge_east``, ``grass``,
+            ``water``, ``npc``, ``item``, ``rock_smash``, ``rock_strength``,
+            ``tree_cut``, or ``unknown``.
+        notes: Optional annotation, e.g. NPC name or item name.
+
+    Returns:
+        Dict confirming the recorded tile.
+    """
+    await _get_kb().record_tile(map_id=map_id, x=x, y=y, tile_type=tile_type, notes=notes)
+    return {"map_id": map_id, "x": x, "y": y, "tile_type": tile_type}
+
+
+@mcp.tool()
+async def get_map_tiles(map_id: int) -> list:
+    """Return all recorded tiles for a map.
+
+    Use this when entering a map to recall previously explored terrain before
+    deciding a route. The current observation already shows nearby tiles
+    in the MAP TILES section; call this tool when you need the full picture.
+
+    Args:
+        map_id: Map identifier to query (from the current game state).
+
+    Returns:
+        List of dicts with ``x``, ``y``, ``tile_type``, ``notes``.
+    """
+    return await _get_kb().get_map_tiles(map_id)
+
+
+@mcp.tool()
+async def lookup_pokemon(species_id: int) -> dict | None:
+    """Look up a Pokemon species on PokeAPI (cached).
+
+    Fetches types, base stats, and evolution chain. Results are cached
+    in the local knowledge base so repeated calls are instant.
+
+    Args:
+        species_id: National Pokédex number (e.g. 255 for Torchic).
+
+    Returns:
+        Dict with ``name``, ``types`` (list), ``base_stats`` (dict),
+        ``evolution_chain`` (list of names), or ``None`` on network failure.
+    """
+    return await _get_pokeapi().get_pokemon(species_id)
+
+
+@mcp.tool()
+async def lookup_move(move_id: int) -> dict | None:
+    """Look up a move on PokeAPI (cached).
+
+    Args:
+        move_id: Move ID as stored in the game's memory (e.g. 10 for Scratch).
+
+    Returns:
+        Dict with ``name``, ``type``, ``power``, ``accuracy``, ``pp``,
+        or ``None`` on network failure.
+    """
+    return await _get_pokeapi().get_move(move_id)
+
+
+@mcp.tool()
+async def lookup_item(item_id: int) -> dict | None:
+    """Look up an item on PokeAPI (cached).
+
+    Args:
+        item_id: Item ID as stored in the game's memory.
+
+    Returns:
+        Dict with ``name``, ``category``, ``effect``,
+        or ``None`` on network failure.
+    """
+    return await _get_pokeapi().get_item(item_id)
 
 
 @mcp.tool()
@@ -472,6 +736,7 @@ def admin_stop() -> None:
         ["pgrep", "-f", "pokemon-mcp"],
         capture_output=True,
         text=True,
+        check=False,
     )
     pids = [int(p) for p in result.stdout.strip().split() if p.strip()]
     own_pid = os.getpid()
