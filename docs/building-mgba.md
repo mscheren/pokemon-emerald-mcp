@@ -6,6 +6,9 @@ command line — its `-l` flag means `--log-level`, not script loading. The Qt f
 built from source adds `--script FILE` which is essential for the controller to launch
 mGBA with the agent Lua script automatically.
 
+Alternatively, the MGBA application may be launched manually with the lua script being
+loaded in post. In this case, building from source is not necessary.
+
 ## Prerequisites
 
 The mGBA source is expected at `~/mgba`. If it isn't there, clone it:
@@ -20,10 +23,6 @@ Install build dependencies (Ubuntu/Debian):
 sudo apt-get install -y cmake ninja-build qt6-base-dev qt6-multimedia-dev \
   libsdl2-dev liblua5.4-dev libpng-dev zlib1g-dev libzip-dev libepoxy-dev libelf-dev
 ```
-
-> **Note:** The `libzip-dev` package may have a broken cmake config on some Ubuntu
-> versions (missing `/usr/bin/zipcmp`). The build disables libzip support with
-> `-DUSE_LIBZIP=OFF` to work around this; it has no impact on scripting functionality.
 
 ## Build
 
@@ -65,7 +64,7 @@ Confirm the `--script` flag is present:
 
 The mGBA scripting console (Tools → Scripting) should show:
 
-```
+```text
 [PokemonAgent] Listening on port 5000
 ```
 

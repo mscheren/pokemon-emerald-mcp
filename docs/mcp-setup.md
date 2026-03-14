@@ -4,55 +4,7 @@ The Pokemon Agent exposes an MCP server so the CLI agent can control the emulato
 directly as MCP tools, without the file-based agent loop.
 
 The server uses **stdio transport**: CLI agent spawns a Docker container on-demand and
-communicates over stdin/stdout. No persistent HTTP port is required.
-
-## Quick Start
-
-### 1. Start the emulator
-
-```bash
-docker compose up -d mgba
-```
-
-This starts mGBA headlessly via `Xvfb` inside the `mgba` container, loading your ROM
-and the Lua socket server on port 5000 (internal to the Docker network).
-
-Check it started:
-
-```bash
-docker compose logs mgba
-```
-
-### 2. Register with CLI Agent
-
-Example for Claude Code:
-
-```bash
-claude mcp add pokemon-agent -- \
-  docker compose -f /path/to/pokemon_agent/docker-compose.yml \
-  run --rm --no-deps mcp-server uv run pokemon-mcp
-```
-
-Replace `/path/to/pokemon_agent` with the absolute path to this repository.
-
-Verify:
-
-```bash
-claude mcp list
-```
-
-### 3. Use from CLI Agent
-
-The CLI agent should spawn the `mcp-server` container automatically each session and communicates
-via stdio. Example prompts:
-
-- "Call `observe` to see what's on screen, then decide what to do next."
-- "Press the A button 3 times, then call `observe` again."
-- "Use `query_knowledge` to check if we've been to Oldale Town before."
-
-For Claude Code, use `/mcp` inside a session to confirm `pokemon-agent` appears as connected.
-
----
+communicates over stdin/stdout.
 
 ## Available Tools
 
@@ -138,31 +90,6 @@ Valid `action` values: `press_button`, `press_buttons`, `wait`.
 
 ---
 
-## Accessing Screenshots
-
-Screenshots are written to the `screenshots` Docker volume, mounted at
-`/data/screenshots` in both containers.
-
-To copy a screenshot to the host:
-
-```bash
-docker compose cp mgba:/data/screenshots/mcp_<timestamp>.png .
-```
-
-Or bind-mount the volume to a host path in `docker-compose.yml`:
-
-```yaml
-volumes:
-  screenshots:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /tmp/pokemon-screenshots
-```
-
----
-
 ## Environment Variables
 
 | Variable | Default | Description |
@@ -174,27 +101,36 @@ volumes:
 
 ---
 
-## Running Without Docker (local development)
+## Running The Server
 
 ```bash
 # mGBA must already be running with the Lua script loaded
-MGBA_HOST=127.0.0.1 uv run pokemon-mcp
+uv run pokemon-mcp
 ```
 
-Then register with Claude Code:
+Then register with Claude Code or any other CLI agent:
 
 ```bash
 claude mcp add pokemon-agent -- \
-  env MGBA_HOST=127.0.0.1 uv --directory /path/to/pokemon_agent run pokemon-mcp
+  env ... uv --directory /path/to/pokemon_agent run pokemon-mcp
+```
+
+Verify:
+
+```bash
+claude mcp list
 ```
 
 ---
 
-## Stopping
+### Use from CLI Agent
 
-```bash
-docker compose down
-```
+The CLI agent should spawn the `mcp-server` container automatically each session and communicates
+via stdio. Example prompts:
 
-The `knowledge` volume persists the SQLite database across restarts.
-To reset the knowledge base: `docker compose down -v`.
+- "Play Pokemon Emerald using the pokemon_agent MCP server. Try to beat the game!"
+- "Call `observe` to see what's on screen, then decide what to do next."
+- "Press the A button 3 times, then call `observe` again."
+- "Use `query_knowledge` to check if we've been to Oldale Town before."
+
+For Claude Code, use `/mcp` inside a session to confirm `pokemon-agent` appears as connected.

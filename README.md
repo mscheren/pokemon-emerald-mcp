@@ -9,8 +9,10 @@ server that connects to a live mGBA emulator instance.
 
 ### Prerequisites
 
-- mGBA built from source (0.11-dev). See [`docs/building-mgba.md`](./docs/building-mgba.md). Binary expected at `~/mgba/build/qt/mgba-qt`.
-- Python 3.11+ and [uv](https://docs.astral.sh/uv/)
+- Installation of mGBA
+- For fully automated process:
+  mGBA built from source (0.11-dev). See [`docs/building-mgba.md`](./docs/building-mgba.md). Binary expected at `~/mgba/build/qt/mgba-qt`.
+- Python 3.12+ and [uv](https://docs.astral.sh/uv/)
 - A compiled copy of Pokemon Emerald.
 
 Start by installing the dependencies.
@@ -35,6 +37,8 @@ get into the game world before starting the MCP server.
 > **Important**: the Lua server only accepts one client at a time. Do **not** run
 > `uv run pokemon-agent` at the same time as the MCP server — they will compete for
 > the connection.
+
+Alternatively, you may run the mGBA application manually, then load both the ROM and the [Pokemon agent lua script](./src/lua_scripts/pokemon_agent.lua).
 
 ### Stopping a session
 
@@ -90,78 +94,7 @@ Each turn:
 
 The screenshot arrives inline as an image block in the `observe` response. No separate file read is needed.
 
-### Sequences (required for reliable navigation)
-
-Single `press_button` calls return immediately while the button hold continues in the background.
-Without waits between presses the player drifts unpredictably. Use `execute_sequence`:
-
-```json
-[
-  {"action": "press_button", "button": "UP",   "duration_frames": 16},
-  {"action": "wait",         "wait_frames": 20},
-  {"action": "press_button", "button": "UP",   "duration_frames": 16},
-  {"action": "wait",         "wait_frames": 20}
-]
-```
-
-One tile of movement ≈ 16 frames hold + 20 frames wait.
-
----
-
-## Available MCP Tools
-
-### Perception
-
-| Tool | Parameters | Description |
-| ------ | ------------ | ------------- |
-| `observe` | — | **Primary tool** — game state text + screenshot image in one call |
-| `get_extended_state` | — | Bag items and PC box occupancy |
-
-### Actions
-
-| Tool | Parameters | Description |
-| ------ | ------------ | ------------- |
-| `press_button` | `button`, `duration_frames=8` | Hold a single GBA button |
-| `press_buttons` | `buttons` (list), `duration_frames=8` | Hold multiple buttons simultaneously |
-| `execute_sequence` | `steps` (list of dicts) | Multi-step input sequence with waits |
-| `wait` | `frames=60` | Idle for N emulated frames (~60 fps) |
-
-Valid buttons: `A`, `B`, `UP`, `DOWN`, `LEFT`, `RIGHT`, `START`, `SELECT`, `L`, `R`
-
-### Knowledge base — read
-
-| Tool | Parameters | Description |
-| ------ | ------------ | ------------- |
-| `query_knowledge` | `query`, `limit=5` | Search discoveries by keyword |
-| `search_strategies` | `keyword`, `limit=5` | Search strategies by keyword |
-| `get_pokemon_info` | `species_id` | Retrieve stored species knowledge |
-| `get_active_guidance` | — | List all active guidance instructions |
-| `get_progress_summary` | — | Summarise badges, captures, evolutions, milestones |
-| `get_map_tiles` | `map_id` | Retrieve all recorded tiles for a map |
-
-### Knowledge base — write
-
-| Tool | Parameters | Description |
-| ------ | ------------ | ------------- |
-| `record_discovery` | `category`, `title`, `description`, `map_id?`, `x?`, `y?`, `metadata?` | Save a game discovery |
-| `record_progress` | `event_type`, `event_name`, `details?` | Log a milestone (badge/capture/evolution) |
-| `record_strategy` | `situation`, `approach`, `outcome?`, `effectiveness?` | Save a battle or navigation strategy |
-| `record_pokemon` | `species_id`, `species_name`, `type_primary?`, `type_secondary?`, `notes?` | Store species knowledge |
-| `add_guidance` | `instruction`, `context?`, `priority?` | Add an instruction (surfaced in every `observe`) |
-| `update_guidance_status` | `guidance_id`, `status` | Mark guidance `completed` or `superseded` |
-| `record_tile` | `map_id`, `x`, `y`, `tile_type`, `notes?` | Record terrain type at a map coordinate |
-
-### PokeAPI (cached)
-
-| Tool | Parameters | Description |
-| ------ | ------------ | ------------- |
-| `lookup_pokemon` | `species_id` | Types, base stats, and evolution chain |
-| `lookup_move` | `move_id` | Move name, type, power, accuracy, PP |
-| `lookup_item` | `item_id` | Item name, category, and effect |
-
-Knowledge base contents are automatically injected into every `observe` response:
-active guidance entries appear in a `GUIDANCE` section; up to 3 relevant discoveries
-for the current map appear in a `KNOWLEDGE` section.
+For available MCP tools, see the [MCP setup documentation](./docs/mcp-setup.md).
 
 ---
 
@@ -188,15 +121,6 @@ uv run pytest                 # run all tests
 uv run pytest tests/unit/     # unit tests only
 ```
 
-### Environment variables
-
-| Variable | Default | Description |
-| ---------- | --------- | ------------- |
-| `MGBA_HOST` | `127.0.0.1` | Hostname of the mGBA Lua server |
-| `MGBA_PORT` | `5000` | Port of the mGBA Lua server |
-| `SCREENSHOT_DIR` | `data/screenshots` | Directory for saved screenshots |
-| `KB_PATH` | `data/knowledge/pokemon_knowledge.db` | Path to the SQLite knowledge base |
-
 ---
 
 ## WSL2 / mGBA Notes
@@ -207,7 +131,7 @@ uv run pytest tests/unit/     # unit tests only
 - **Fullscreen**: `controller.py` patches `~/.config/mgba/config.ini` to force
   `fullscreen=0` on startup to prevent WSL2 window freeze.
 - **Host**: Use `127.0.0.1` not `localhost` to avoid IPv6 resolution issues in WSL2.
-- **Docker**: A Docker Compose setup is available for headless deployments. See [`docs/mcp-setup.md`](./docs/mcp-setup.md).
+- Play on native system (not subsystem) for optimal gameplay flow.
 
 ---
 
@@ -236,8 +160,8 @@ The agent automatically sets `audioBuffers=8192`. If crunchiness persists you ca
 
 ### Running mGBA natively on Windows (best performance)
 
-For best audio and rendering quality, run mGBA on Windows and connect the agent from
-WSL2 over TCP.
+For best audio and rendering quality, run mGBA on Windows (or your native system in general) and
+connect the agent from WSL2 over TCP.
 
 **Step 1 — Start mGBA on Windows** with the Lua script loaded:
 
@@ -249,6 +173,7 @@ WSL2 over TCP.
 **Step 2 — Allow WSL2 through Windows Firewall:**
 
 Add an inbound rule for TCP port 5000 from the WSL2 subnet (typically `172.16.0.0/12`).
+This should be done automatically on loading the script if the rule does not exist already.
 
 **Step 3 — Connect the agent from WSL2:**
 
