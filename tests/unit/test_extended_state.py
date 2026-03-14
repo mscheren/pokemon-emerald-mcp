@@ -1,6 +1,5 @@
 """Unit tests for BagItem, PCPokemon, and ExtendedState models."""
 
-import pytest
 
 from src.agent.models import BagItem, ExtendedState, PCPokemon
 

@@ -202,8 +202,9 @@ class TestPokemonAgentControllerObservation:
         game_state = GameState.from_dict(state_data)
         obs = Observation(game_state=game_state, frame_number=0)
 
-        with patch.object(ctrl_module, "DECISION_FILE", decision_file), patch.object(
-            ctrl_module, "OBSERVATION_FILE", obs_file
+        with (
+            patch.object(ctrl_module, "DECISION_FILE", decision_file),
+            patch.object(ctrl_module, "OBSERVATION_FILE", obs_file),
         ):
             write_task = asyncio.create_task(_write_after_delay())
             decision = await ctrl._get_decision(obs)
@@ -237,8 +238,9 @@ class TestPokemonAgentControllerObservation:
         game_state = GameState.from_dict(state_data)
         obs = Observation(game_state=game_state, frame_number=0)
 
-        with patch.object(ctrl_module, "DECISION_FILE", decision_file), patch.object(
-            ctrl_module, "OBSERVATION_FILE", obs_file
+        with (
+            patch.object(ctrl_module, "DECISION_FILE", decision_file),
+            patch.object(ctrl_module, "OBSERVATION_FILE", obs_file),
         ):
             shutdown_task = asyncio.create_task(_shutdown_after_delay())
             decision = await ctrl._get_decision(obs)
@@ -486,8 +488,9 @@ class TestEventHandling:
         game_state = GameState.from_dict(state_data)
         obs = Observation(game_state=game_state, frame_number=0)
 
-        with patch.object(ctrl_module, "DECISION_FILE", decision_file), patch.object(
-            ctrl_module, "OBSERVATION_FILE", obs_file
+        with (
+            patch.object(ctrl_module, "DECISION_FILE", decision_file),
+            patch.object(ctrl_module, "OBSERVATION_FILE", obs_file),
         ):
             write_task = asyncio.create_task(_write_after_delay())
             # Read the obs file to verify event context was prepended
@@ -530,7 +533,7 @@ class TestConfigureMgba:
 
     def test_mute_adds_mute_key(self, tmp_path: Path):
         import src.agent.controller as ctrl_module
-        from src.agent.controller import MGBA_CONFIG, _configure_mgba
+        from src.agent.controller import _configure_mgba
 
         config = tmp_path / "config.ini"
         config.write_text("[core]\n")
@@ -635,7 +638,6 @@ class TestDiscoverWindowsHost:
 
     def test_returns_nameserver_ip(self, tmp_path: Path):
         import src.agent.cli as cli_module
-        from src.agent.cli import _discover_windows_host
 
         resolv = tmp_path / "resolv.conf"
         resolv.write_text("# WSL2\nnameserver 172.21.96.1\n")
@@ -669,8 +671,6 @@ class TestDiscoverWindowsHost:
     def test_falls_back_when_no_nameserver(self, tmp_path: Path):
         import re
 
-        import src.agent.cli as cli_module
-        from src.agent.cli import _discover_windows_host
 
         resolv = tmp_path / "resolv.conf"
         resolv.write_text("# no nameserver line\n")

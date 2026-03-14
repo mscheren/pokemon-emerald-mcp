@@ -1,10 +1,11 @@
 """Unit tests for MCP server helper functions."""
+
 import io
-import pytest
 from pathlib import Path
+
 from PIL import Image as PILImage
 
-from src.agent.mcp_server import _annotate_screenshot, _GRID_OFFSET_X, _GRID_OFFSET_Y, _TILE_PX
+from src.agent.mcp_server import _GRID_OFFSET_X, _GRID_OFFSET_Y, _TILE_PX, _annotate_screenshot
 
 
 def _make_png(tmp_path: Path, width: int = 240, height: int = 160) -> Path:
@@ -44,23 +45,30 @@ class TestAnnotateScreenshot:
     def test_all_tile_types_accepted(self, tmp_path):
         path = _make_png(tmp_path)
         tile_types = [
-            "passable", "blocked", "grass", "water",
-            "ledge_south", "ledge_north", "ledge_west", "ledge_east",
-            "npc", "item", "rock_smash", "rock_strength", "tree_cut", "unknown",
+            "passable",
+            "blocked",
+            "grass",
+            "water",
+            "ledge_south",
+            "ledge_north",
+            "ledge_west",
+            "ledge_east",
+            "npc",
+            "item",
+            "rock_smash",
+            "rock_strength",
+            "tree_cut",
+            "unknown",
         ]
         # Place each tile type within the viewport at distinct positions
         tiles = [
-            {"x": 10 - 7 + i, "y": 8 - 4, "tile_type": tt, "notes": None}
-            for i, tt in enumerate(tile_types)
-            if i < 14
+            {"x": 10 - 7 + i, "y": 8 - 4, "tile_type": tt, "notes": None} for i, tt in enumerate(tile_types) if i < 14
         ]
         _annotate_screenshot(path, player_x=10, player_y=8, map_tiles=tiles)
 
     def test_in_battle_returns_plain_image(self, tmp_path):
         path = _make_png(tmp_path)
-        result = _annotate_screenshot(
-            path, player_x=10, player_y=8, map_tiles=[], in_battle=True
-        )
+        result = _annotate_screenshot(path, player_x=10, player_y=8, map_tiles=[], in_battle=True)
         assert isinstance(result, bytes)
         img = PILImage.open(io.BytesIO(result))
         assert img.format == "PNG"
@@ -69,9 +77,7 @@ class TestAnnotateScreenshot:
     def test_in_battle_matches_plain_upscale(self, tmp_path):
         """Battle mode must not draw any overlay — pixels identical to nearest-neighbour upscale."""
         path = _make_png(tmp_path)
-        battle_result = _annotate_screenshot(
-            path, player_x=10, player_y=8, map_tiles=[], in_battle=True
-        )
+        battle_result = _annotate_screenshot(path, player_x=10, player_y=8, map_tiles=[], in_battle=True)
         # Generate plain upscale for comparison
         with PILImage.open(path) as src:
             plain = src.resize((960, 640), PILImage.NEAREST)
@@ -88,6 +94,7 @@ class TestAnnotateScreenshot:
         img_tile = PILImage.open(io.BytesIO(result_tile))
         img_none = PILImage.open(io.BytesIO(result_none))
         from PIL import ImageChops
+
         diff = ImageChops.difference(img_tile, img_none)
         assert diff.getbbox() is not None  # images differ somewhere
 

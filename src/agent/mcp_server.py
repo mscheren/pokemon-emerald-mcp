@@ -19,10 +19,11 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP, Image
-from PIL import Image as PILImage, ImageDraw, ImageFont
+from PIL import Image as PILImage
+from PIL import ImageDraw, ImageFont
 
 from .controller import GameController
-from .formatter import ObservationFormatter, _TILE_CHARS
+from .formatter import _TILE_CHARS, ObservationFormatter
 from .knowledge import KnowledgeBase
 from .mgba_client import MGBAClient
 from .models import GameState, Observation, SequenceStep
@@ -65,32 +66,32 @@ def _get_pokeapi() -> PokeAPIClient:
 
 
 # GBA viewport geometry (at 4× scale: 960×640, 64 px/tile)
-_TILE_PX = 64   # pixels per tile after 4× upscale
-_CAM_COL = 7    # player tile column in the 15-wide viewport (0-indexed)
-_CAM_ROW = 4    # player tile row in the 10-tall viewport (0-indexed)
+_TILE_PX = 64  # pixels per tile after 4× upscale
+_CAM_COL = 7  # player tile column in the 15-wide viewport (0-indexed)
+_CAM_ROW = 4  # player tile row in the 10-tall viewport (0-indexed)
 # pokeemerald camera formula: HOFS = player_x*16 - DISPLAY_WIDTH/2 (120)
 #                              VOFS = player_y*16 - DISPLAY_HEIGHT/2 (80)
 # → first metatile boundary on screen at x=120−7×16=8 native (32 at 4×)
 #                                        y= 80−4×16=16 native (64 at 4×)
-_GRID_OFFSET_X = 32   # 8 native px → 32 at 4× (HOFS uses DISPLAY_WIDTH/2)
-_GRID_OFFSET_Y = 64   # 16 native px → 64 at 4× (VOFS uses DISPLAY_HEIGHT/2)
+_GRID_OFFSET_X = 32  # 8 native px → 32 at 4× (HOFS uses DISPLAY_WIDTH/2)
+_GRID_OFFSET_Y = 64  # 16 native px → 64 at 4× (VOFS uses DISPLAY_HEIGHT/2)
 
 # Per-tile-type label colors (RGB) for the screenshot overlay
 _TILE_LABEL_COLORS: dict[str, tuple[int, int, int]] = {
-    "passable":      (0, 220, 0),
-    "blocked":       (220, 50, 50),
-    "grass":         (200, 220, 0),
-    "water":         (0, 150, 255),
-    "ledge_south":   (255, 165, 0),
-    "ledge_north":   (255, 165, 0),
-    "ledge_west":    (255, 165, 0),
-    "ledge_east":    (255, 165, 0),
-    "npc":           (0, 220, 220),
-    "item":          (220, 0, 220),
-    "rock_smash":    (160, 110, 60),
+    "passable": (0, 220, 0),
+    "blocked": (220, 50, 50),
+    "grass": (200, 220, 0),
+    "water": (0, 150, 255),
+    "ledge_south": (255, 165, 0),
+    "ledge_north": (255, 165, 0),
+    "ledge_west": (255, 165, 0),
+    "ledge_east": (255, 165, 0),
+    "npc": (0, 220, 220),
+    "item": (220, 0, 220),
+    "rock_smash": (160, 110, 60),
     "rock_strength": (160, 110, 60),
-    "tree_cut":      (60, 150, 60),
-    "unknown":       (180, 180, 180),
+    "tree_cut": (60, 150, 60),
+    "unknown": (180, 180, 180),
 }
 
 
@@ -309,7 +310,7 @@ async def observe() -> list:
 @mcp.tool()
 async def get_extended_state() -> dict:
     """Return state including bag items and PC box occupancy.
-    
+
     Prefer when deliberating on what to do or during long-term planning.
     """
     return await _get_client().request_extended_state()

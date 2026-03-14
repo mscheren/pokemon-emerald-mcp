@@ -4,6 +4,7 @@ Covers KnowledgeBase initialisation, schema creation (all 5 tables and their
 indexes), and all CRUD operations: discoveries, user_guidance, strategies,
 pokemon_knowledge, and progress.
 """
+
 import pytest
 import pytest_asyncio
 
@@ -43,9 +44,7 @@ class TestSchema:
     async def test_discoveries_indexes_exist(self, kb):
         """discoveries table must have indexes on category and map_id."""
         conn = kb._require_conn()
-        async with conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='discoveries'"
-        ) as cur:
+        async with conn.execute("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='discoveries'") as cur:
             names = {row["name"] for row in await cur.fetchall()}
         assert "idx_discoveries_category" in names
         assert "idx_discoveries_map" in names
@@ -62,9 +61,7 @@ class TestSchema:
     async def test_strategies_index_exists(self, kb):
         """strategies table must have an index on situation."""
         conn = kb._require_conn()
-        async with conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='strategies'"
-        ) as cur:
+        async with conn.execute("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='strategies'") as cur:
             names = {row["name"] for row in await cur.fetchall()}
         assert "idx_strategies_situation" in names
 
@@ -80,9 +77,7 @@ class TestSchema:
     async def test_progress_index_exists(self, kb):
         """progress table must have an index on event_type."""
         conn = kb._require_conn()
-        async with conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='progress'"
-        ) as cur:
+        async with conn.execute("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='progress'") as cur:
             names = {row["name"] for row in await cur.fetchall()}
         assert "idx_progress_type" in names
 
@@ -137,15 +132,21 @@ class TestDiscoveries:
     async def test_record_with_coords(self, kb):
         """record_discovery() must accept optional map_id, x, and y arguments."""
         row_id = await kb.record_discovery(
-            "location", "Rustboro City", "First gym city",
-            map_id=42, x=10, y=15,
+            "location",
+            "Rustboro City",
+            "First gym city",
+            map_id=42,
+            x=10,
+            y=15,
         )
         assert row_id is not None
 
     async def test_record_with_metadata(self, kb):
         """record_discovery() must accept an optional metadata dict."""
         row_id = await kb.record_discovery(
-            "npc", "Professor Birch", "Starting NPC",
+            "npc",
+            "Professor Birch",
+            "Starting NPC",
             metadata={"quest": "starter_choice"},
         )
         assert row_id is not None
@@ -241,9 +242,7 @@ class TestStrategies:
 
     async def test_record_and_search(self, kb):
         """record_strategy() and search_strategies() must round-trip correctly."""
-        await kb.record_strategy(
-            "wild battle", "use type advantage", "won quickly", effectiveness=4
-        )
+        await kb.record_strategy("wild battle", "use type advantage", "won quickly", effectiveness=4)
         results = await kb.search_strategies("wild")
         assert len(results) == 1
         assert results[0]["situation"] == "wild battle"
@@ -358,9 +357,7 @@ class TestProgress:
 
     async def test_empty_summary(self, kb):
         """get_progress_summary() must return zeroed counters when no events exist."""
-        assert await kb.get_progress_summary() == {
-            "badges": [], "captures": 0, "milestones": 0, "evolutions": 0
-        }
+        assert await kb.get_progress_summary() == {"badges": [], "captures": 0, "milestones": 0, "evolutions": 0}
 
     async def test_record_returns_row_id(self, kb):
         """record_progress() must return the auto-incremented row id."""

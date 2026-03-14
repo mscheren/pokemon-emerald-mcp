@@ -5,12 +5,9 @@ import pytest
 from src.agent.models import (
     AgentDecision,
     GameState,
-    KnowledgeEntry,
     Move,
-    Observation,
     PartyPokemon,
     SequenceStep,
-    UserGuidance,
 )
 
 

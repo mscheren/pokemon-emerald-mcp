@@ -1,8 +1,7 @@
 import asyncio
 import json
 import logging
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -46,9 +45,7 @@ class MGBAClient:
         """
         for attempt in range(retries):
             try:
-                self.reader, self.writer = await asyncio.open_connection(
-                    self.host, self.port
-                )
+                self.reader, self.writer = await asyncio.open_connection(self.host, self.port)
                 self._connected = True
                 logger.info(f"Connected to mGBA at {self.host}:{self.port}")
                 return
@@ -56,9 +53,7 @@ class MGBAClient:
                 logger.warning(f"Connect attempt {attempt + 1}/{retries} failed: {e}")
                 if attempt < retries - 1:
                     await asyncio.sleep(delay)
-        raise ConnectionError(
-            f"Could not connect to mGBA at {self.host}:{self.port} after {retries} attempts"
-        )
+        raise ConnectionError(f"Could not connect to mGBA at {self.host}:{self.port} after {retries} attempts")
 
     def _next_id(self) -> int:
         """Return the next monotonically increasing message ID.
@@ -97,7 +92,7 @@ class MGBAClient:
         request = {
             "type": "request",
             "id": msg_id,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "payload": {"action": action, **params},
         }
         line = json.dumps(request) + "\n"
@@ -152,9 +147,7 @@ class MGBAClient:
         Returns:
             The ``payload`` dict from the Lua response (``{"status": "ok"}``).
         """
-        response = await self.send_request(
-            "press_button", button=button, duration_frames=duration_frames
-        )
+        response = await self.send_request("press_button", button=button, duration_frames=duration_frames)
         return response.get("payload", {})
 
     async def press_buttons(self, buttons: list[str], duration_frames: int = 5) -> dict[str, Any]:
@@ -167,9 +160,7 @@ class MGBAClient:
         Returns:
             The ``payload`` dict from the Lua response (``{"status": "ok"}``).
         """
-        response = await self.send_request(
-            "press_buttons", buttons=buttons, duration_frames=duration_frames
-        )
+        response = await self.send_request("press_buttons", buttons=buttons, duration_frames=duration_frames)
         return response.get("payload", {})
 
     async def execute_sequence(
@@ -197,14 +188,14 @@ class MGBAClient:
             RuntimeError: If called before a successful ``connect()``.
             ValueError: If an unrecognised step action is encountered.
         """
-        from .models import SequenceStep  # local import avoids circular dep
 
         results: list[dict[str, Any]] = []
         for _ in range(max(1, repeat)):
             for step in steps:
                 if step.action == "press_button":
                     result = await self.press_button(
-                        step.button, step.duration_frames  # type: ignore[arg-type]
+                        step.button,
+                        step.duration_frames,  # type: ignore[arg-type]
                     )
                 elif step.action == "press_buttons":
                     result = await self.press_buttons(step.buttons, step.duration_frames)
@@ -292,9 +283,7 @@ class MGBAClient:
         self._connected = False
         for attempt in range(retries):
             try:
-                self.reader, self.writer = await asyncio.open_connection(
-                    self.host, self.port
-                )
+                self.reader, self.writer = await asyncio.open_connection(self.host, self.port)
                 self._connected = True
                 logger.info(f"Reconnected to mGBA (attempt {attempt + 1})")
                 return True

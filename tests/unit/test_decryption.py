@@ -4,7 +4,7 @@ The actual XOR decryption runs in Lua. These tests verify that the Python
 model correctly reads the pre-decrypted species_id and move_ids fields
 that Lua provides in the get_state payload.
 """
-import pytest
+
 from src.agent.models import PartyPokemon
 
 

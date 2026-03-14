@@ -4,6 +4,7 @@ ObservationFormatter converts a game Observation into the text prompt that
 the agent reads each iteration. DecisionParser extracts the agent's structured
 JSON decision from its text response.
 """
+
 import json
 import logging
 import re
@@ -17,20 +18,20 @@ logger = logging.getLogger(__name__)
 
 # Tile type to grid character mapping
 _TILE_CHARS: dict[str, str] = {
-    "passable":      ".",
-    "blocked":       "X",
-    "grass":         "~",
-    "water":         "W",
-    "ledge_south":   "v",
-    "ledge_north":   "^",
-    "ledge_west":    "<",
-    "ledge_east":    ">",
-    "npc":           "N",
-    "item":          "i",
-    "rock_smash":    "r",
+    "passable": ".",
+    "blocked": "X",
+    "grass": "~",
+    "water": "W",
+    "ledge_south": "v",
+    "ledge_north": "^",
+    "ledge_west": "<",
+    "ledge_east": ">",
+    "npc": "N",
+    "item": "i",
+    "rock_smash": "r",
     "rock_strength": "R",
-    "tree_cut":      "T",
-    "unknown":       "?",
+    "tree_cut": "T",
+    "unknown": "?",
 }
 
 _AGENT_PROTOCOL = """\
@@ -101,10 +102,7 @@ class ObservationFormatter:
 
         # Player state
         lines.append("PLAYER STATE:")
-        lines.append(
-            f"  Location: {gs.map_name} (Map {gs.map_id}) | "
-            f"X:{gs.player_x}, Y:{gs.player_y}"
-        )
+        lines.append(f"  Location: {gs.map_name} (Map {gs.map_id}) | X:{gs.player_x}, Y:{gs.player_y}")
         if gs.badges:
             lines.append(f"  Badges ({len(gs.badges)}): {', '.join(gs.badges)}")
         else:
@@ -142,9 +140,7 @@ class ObservationFormatter:
                 lines.append("BAG:")
                 for pocket, items in es.bag.items():
                     if items:
-                        items_str = ", ".join(
-                            f"{it.name} x{it.quantity}" for it in items
-                        )
+                        items_str = ", ".join(f"{it.name} x{it.quantity}" for it in items)
                         lines.append(f"  {pocket}: {items_str}")
                     else:
                         lines.append(f"  {pocket}: (empty)")
@@ -168,9 +164,7 @@ class ObservationFormatter:
         if relevant_knowledge:
             lines.append("RELEVANT KNOWLEDGE FROM MEMORY:")
             for k in relevant_knowledge[:3]:
-                lines.append(
-                    f"  [{k['category']}] {k['title']}: {k['description']}"
-                )
+                lines.append(f"  [{k['category']}] {k['title']}: {k['description']}")
             lines.append("")
 
         return "\n".join(lines)
@@ -185,9 +179,7 @@ class ObservationFormatter:
 
         Unknown tiles (not yet recorded) are shown as '?'.
         """
-        lookup: dict[tuple[int, int], str] = {
-            (t["x"], t["y"]): t["tile_type"] for t in tiles
-        }
+        lookup: dict[tuple[int, int], str] = {(t["x"], t["y"]): t["tile_type"] for t in tiles}
         n = lookup.get((player_x, player_y - 1), "?")
         s = lookup.get((player_x, player_y + 1), "?")
         e = lookup.get((player_x + 1, player_y), "?")
@@ -207,9 +199,7 @@ class DecisionParser:
     """Extracts and validates AgentDecision from agent's text response."""
 
     VALID_ACTIONS = {"press_button", "press_buttons", "wait", "save_game", "pause"}
-    VALID_BUTTONS = {
-        "A", "B", "UP", "DOWN", "LEFT", "RIGHT", "START", "SELECT", "L", "R"
-    }
+    VALID_BUTTONS = {"A", "B", "UP", "DOWN", "LEFT", "RIGHT", "START", "SELECT", "L", "R"}
 
     def parse(self, response_text: str) -> "AgentDecision":
         """Parse agent's text response into an AgentDecision.
@@ -287,11 +277,7 @@ class DecisionParser:
                 "duration_frames": max(1, int(params.get("duration_frames", 5))),
             }
         elif action_type == "press_buttons":
-            buttons = [
-                b.upper()
-                for b in params.get("buttons", ["A"])
-                if str(b).upper() in self.VALID_BUTTONS
-            ]
+            buttons = [b.upper() for b in params.get("buttons", ["A"]) if str(b).upper() in self.VALID_BUTTONS]
             return {
                 "buttons": buttons or ["A"],
                 "duration_frames": max(1, int(params.get("duration_frames", 5))),

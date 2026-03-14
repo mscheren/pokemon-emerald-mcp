@@ -1,4 +1,5 @@
 import pytest
+
 from .mock_mgba_server import MockMGBAServer
 
 

@@ -7,7 +7,6 @@ and progress milestones accumulated during gameplay.
 import json
 import logging
 from pathlib import Path
-from typing import Optional
 
 import aiosqlite
 
@@ -35,7 +34,7 @@ class KnowledgeBase:
                 is created automatically by :meth:`initialize`.
         """
         self.db_path = db_path
-        self._conn: Optional[aiosqlite.Connection] = None
+        self._conn: aiosqlite.Connection | None = None
 
     async def initialize(self) -> None:
         """Create the database file and apply the schema.
@@ -71,9 +70,7 @@ class KnowledgeBase:
             RuntimeError: If :meth:`initialize` has not been called.
         """
         if not self._conn:
-            raise RuntimeError(
-                "KnowledgeBase not initialized. Call initialize() first."
-            )
+            raise RuntimeError("KnowledgeBase not initialized. Call initialize() first.")
         return self._conn
 
     # ------------------------------------------------------------------ #
@@ -85,10 +82,10 @@ class KnowledgeBase:
         category: str,
         title: str,
         description: str,
-        map_id: Optional[int] = None,
-        x: Optional[int] = None,
-        y: Optional[int] = None,
-        metadata: Optional[dict] = None,
+        map_id: int | None = None,
+        x: int | None = None,
+        y: int | None = None,
+        metadata: dict | None = None,
     ) -> int:
         """Insert a new game discovery into the knowledge base.
 
@@ -143,12 +140,10 @@ class KnowledgeBase:
     # PokeAPI Cache                                                        #
     # ------------------------------------------------------------------ #
 
-    async def get_pokeapi_cache(self, cache_key: str) -> Optional[str]:
+    async def get_pokeapi_cache(self, cache_key: str) -> str | None:
         """Return cached JSON string for cache_key, or None on miss."""
         conn = self._require_conn()
-        async with conn.execute(
-            "SELECT data FROM pokeapi_cache WHERE cache_key = ?", (cache_key,)
-        ) as cursor:
+        async with conn.execute("SELECT data FROM pokeapi_cache WHERE cache_key = ?", (cache_key,)) as cursor:
             row = await cursor.fetchone()
             return row["data"] if row else None
 
@@ -281,9 +276,9 @@ class KnowledgeBase:
         self,
         species_id: int,
         species_name: str,
-        type_primary: Optional[str] = None,
-        type_secondary: Optional[str] = None,
-        notes: Optional[str] = None,
+        type_primary: str | None = None,
+        type_secondary: str | None = None,
+        notes: str | None = None,
     ) -> None:
         """Upsert a Pokemon species entry (insert or update ``last_seen``).
 
@@ -309,7 +304,7 @@ class KnowledgeBase:
         )
         await conn.commit()
 
-    async def get_pokemon_knowledge(self, species_id: int) -> Optional[dict]:
+    async def get_pokemon_knowledge(self, species_id: int) -> dict | None:
         """Retrieve stored knowledge for a specific Pokemon species.
 
         Args:
@@ -320,9 +315,7 @@ class KnowledgeBase:
             species has not been recorded yet.
         """
         conn = self._require_conn()
-        async with conn.execute(
-            "SELECT * FROM pokemon_knowledge WHERE species_id = ?", (species_id,)
-        ) as cursor:
+        async with conn.execute("SELECT * FROM pokemon_knowledge WHERE species_id = ?", (species_id,)) as cursor:
             row = await cursor.fetchone()
             return dict(row) if row else None
 
@@ -373,9 +366,7 @@ class KnowledgeBase:
             "milestones": 0,
             "evolutions": 0,
         }
-        async with conn.execute(
-            "SELECT event_type, event_name FROM progress ORDER BY timestamp"
-        ) as cursor:
+        async with conn.execute("SELECT event_type, event_name FROM progress ORDER BY timestamp") as cursor:
             rows = await cursor.fetchall()
             for row in rows:
                 et = row["event_type"]
@@ -395,7 +386,7 @@ class KnowledgeBase:
         x: int,
         y: int,
         tile_type: str,
-        notes: Optional[str] = None,
+        notes: str | None = None,
     ) -> None:
         """Insert or replace a tile record for the given map coordinate.
 

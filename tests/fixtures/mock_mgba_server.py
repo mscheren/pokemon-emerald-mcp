@@ -3,11 +3,11 @@
 Simulates all mGBA Lua socket responses so integration tests can run without
 a real ROM or mGBA installation.
 """
+
 import asyncio
 import json
 import uuid
-from datetime import datetime, timezone
-
+from datetime import UTC, datetime
 
 MOCK_GAME_STATE = {
     "frame_number": 42000,
@@ -69,18 +69,14 @@ class MockMGBAServer:
         self.events_to_emit: list[dict] = []
 
     async def start(self) -> None:
-        self.server = await asyncio.start_server(
-            self._handle_client, self.host, self.port
-        )
+        self.server = await asyncio.start_server(self._handle_client, self.host, self.port)
 
     async def stop(self) -> None:
         if self.server:
             self.server.close()
             await self.server.wait_closed()
 
-    async def _handle_client(
-        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
-    ) -> None:
+    async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         while True:
             try:
                 line = await reader.readline()
@@ -102,26 +98,32 @@ class MockMGBAServer:
         payload = request.get("payload", {})
         action = payload.get("action", "")
         req_id = request.get("id", 0)
-        ts = datetime.now(timezone.utc).isoformat()
+        ts = datetime.now(UTC).isoformat()
 
         if action == "get_state":
             self.frame_count += 30
             state = dict(MOCK_GAME_STATE)
             state["frame_number"] = self.frame_count
             return {
-                "type": "response", "id": req_id, "timestamp": ts,
+                "type": "response",
+                "id": req_id,
+                "timestamp": ts,
                 "payload": {**state, "status": "ok"},
             }
 
         if action in ("press_button", "press_buttons"):
             return {
-                "type": "response", "id": req_id, "timestamp": ts,
+                "type": "response",
+                "id": req_id,
+                "timestamp": ts,
                 "payload": {"status": "ok"},
             }
 
         if action == "wait":
             return {
-                "type": "response", "id": req_id, "timestamp": ts,
+                "type": "response",
+                "id": req_id,
+                "timestamp": ts,
                 "payload": {"status": "ok", "frames_waited": payload.get("frames", 0)},
             }
 
@@ -132,32 +134,42 @@ class MockMGBAServer:
             except Exception:
                 pass
             return {
-                "type": "response", "id": req_id, "timestamp": ts,
+                "type": "response",
+                "id": req_id,
+                "timestamp": ts,
                 "payload": {"status": "ok", "path": path, "width": 240, "height": 160},
             }
 
         if action == "save_game":
             return {
-                "type": "response", "id": req_id, "timestamp": ts,
+                "type": "response",
+                "id": req_id,
+                "timestamp": ts,
                 "payload": {"status": "ok", "save_completed": True},
             }
 
         if action == "shutdown":
             return {
-                "type": "response", "id": req_id, "timestamp": ts,
+                "type": "response",
+                "id": req_id,
+                "timestamp": ts,
                 "payload": {"status": "shutting_down"},
             }
 
         return {
-            "type": "response", "id": req_id, "timestamp": ts,
+            "type": "response",
+            "id": req_id,
+            "timestamp": ts,
             "payload": {"status": "error", "error_code": "UNKNOWN_ACTION"},
         }
 
     def queue_event(self, event_payload: dict) -> None:
         """Queue an event to be emitted before the next response."""
-        self.events_to_emit.append({
-            "type": "event",
-            "id": int(uuid.uuid4().int) % 10000 + 1000,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "payload": event_payload,
-        })
+        self.events_to_emit.append(
+            {
+                "type": "event",
+                "id": int(uuid.uuid4().int) % 10000 + 1000,
+                "timestamp": datetime.now(UTC).isoformat(),
+                "payload": event_payload,
+            }
+        )

@@ -1,10 +1,8 @@
 """Unit tests for ObservationFormatter and DecisionParser."""
-import pytest
-from pathlib import Path
-from unittest.mock import MagicMock
+
 
 from src.agent.formatter import DecisionParser, ObservationFormatter
-from src.agent.models import AgentDecision, BagItem, ExtendedState, GameState, Observation, PartyPokemon, PCPokemon
+from src.agent.models import BagItem, ExtendedState, GameState, Observation, PartyPokemon, PCPokemon
 
 
 def _make_observation(screenshot_path=None) -> Observation:
@@ -112,6 +110,7 @@ class TestObservationFormatter:
         bar = ObservationFormatter()._hp_bar(0, 0)
         assert "----------" in bar
 
+
 class TestDecisionParser:
     def _parser(self):
         return DecisionParser()
@@ -124,7 +123,9 @@ class TestDecisionParser:
         assert decision.reasoning == "go north"
 
     def test_parse_bare_json(self):
-        response = '{"action_type": "wait", "action_params": {"frames": 60}, "reasoning": "rest", "knowledge_to_store": []}'
+        response = (
+            '{"action_type": "wait", "action_params": {"frames": 60}, "reasoning": "rest", "knowledge_to_store": []}'
+        )
         decision = self._parser().parse(response)
         assert decision.action_type == "wait"
         assert decision.action_params["frames"] == 60
@@ -146,7 +147,9 @@ class TestDecisionParser:
         assert decision.action_params["button"] == "A"
 
     def test_parse_press_buttons_filters_invalid(self):
-        response = '{"action_type": "press_buttons", "action_params": {"buttons": ["UP", "INVALID", "A"]}, "reasoning": ""}'
+        response = (
+            '{"action_type": "press_buttons", "action_params": {"buttons": ["UP", "INVALID", "A"]}, "reasoning": ""}'
+        )
         decision = self._parser().parse(response)
         assert "INVALID" not in decision.action_params["buttons"]
         assert "UP" in decision.action_params["buttons"]
@@ -176,7 +179,10 @@ class TestDecisionParser:
 
     def test_screenshot_required_missing_logs_warning(self, caplog):
         import logging
-        response = '{"action_type": "wait", "action_params": {"frames": 30}, "reasoning": "r", "knowledge_to_store": []}'
+
+        response = (
+            '{"action_type": "wait", "action_params": {"frames": 30}, "reasoning": "r", "knowledge_to_store": []}'
+        )
         with caplog.at_level(logging.WARNING, logger="src.agent.formatter"):
             decision = self._parser().parse(response)
         assert decision.screenshot_required is False
@@ -184,6 +190,7 @@ class TestDecisionParser:
 
     def test_screenshot_required_false_logs_warning(self, caplog):
         import logging
+
         response = '{"action_type": "wait", "action_params": {"frames": 30}, "reasoning": "r", "knowledge_to_store": [], "screenshot_required": false}'
         with caplog.at_level(logging.WARNING, logger="src.agent.formatter"):
             decision = self._parser().parse(response)
@@ -232,10 +239,10 @@ class TestNeighboursSection:
     def _tiles_around(self, px=5, py=7):
         """Tiles for all four cardinal neighbours of (px, py)."""
         return [
-            {"x": px,     "y": py - 1, "tile_type": "ledge_south", "notes": None},  # N
-            {"x": px,     "y": py + 1, "tile_type": "grass",        "notes": None},  # S
-            {"x": px + 1, "y": py,     "tile_type": "passable",     "notes": None},  # E
-            {"x": px - 1, "y": py,     "tile_type": "blocked",      "notes": None},  # W
+            {"x": px, "y": py - 1, "tile_type": "ledge_south", "notes": None},  # N
+            {"x": px, "y": py + 1, "tile_type": "grass", "notes": None},  # S
+            {"x": px + 1, "y": py, "tile_type": "passable", "notes": None},  # E
+            {"x": px - 1, "y": py, "tile_type": "blocked", "notes": None},  # W
         ]
 
     def test_format_includes_agent_protocol(self):

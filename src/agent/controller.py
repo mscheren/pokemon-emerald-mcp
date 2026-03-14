@@ -11,7 +11,6 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Optional
 
 from .formatter import DecisionParser, ObservationFormatter
 from .knowledge import KnowledgeBase
@@ -22,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 # Default screenshot directory (relative to project root)
 SCREENSHOTS_DIR = Path("data/screenshots")
+
 
 def _wsl_to_windows_path(path: Path) -> str:
     """Convert a WSL2 /mnt/X/... path to its Windows equivalent X:\\...
@@ -36,6 +36,7 @@ def _wsl_to_windows_path(path: Path) -> str:
         rest = "\\".join(parts[3:])
         return f"{drive}:\\{rest}"
     return str(path)
+
 
 # File-based IPC paths for CLI agent integration
 # The agent reads OBSERVATION_FILE and writes DECISION_FILE each turn.
@@ -144,7 +145,7 @@ class PokemonAgentController:
         self.screenshot_interval = max(1, screenshot_interval)
         self.mgba_client = MGBAClient(host=host, port=port)
         self.knowledge_base = KnowledgeBase(knowledge_db_path)
-        self.mgba_process: Optional[subprocess.Popen] = None
+        self.mgba_process: subprocess.Popen | None = None
         self.running = False
         self.paused = False
         self._pause_msg_shown = False
@@ -192,7 +193,7 @@ class PokemonAgentController:
         print(f"  Write decisions to     : {DECISION_FILE.absolute()}")
         print(f"{'=' * 60}\n")
 
-        self._stop_task: Optional[asyncio.Task] = None
+        self._stop_task: asyncio.Task | None = None
 
         def _on_signal() -> None:
             if self._stop_task is None:
@@ -224,7 +225,7 @@ class PokemonAgentController:
         """Launch mGBA with the Lua script and ROM."""
         if not MGBA_BINARY.exists():
             raise FileNotFoundError(
-                f"mGBA binary not found at {MGBA_BINARY}. " "Build mGBA from source — see docs/building-mgba.md."
+                f"mGBA binary not found at {MGBA_BINARY}. Build mGBA from source — see docs/building-mgba.md."
             )
         _configure_mgba(mute=mute)
         cmd = [str(MGBA_BINARY), "--script", str(self.lua_script_path), str(self.rom_path)]
@@ -248,7 +249,7 @@ class PokemonAgentController:
         # operation is in flight when we call save_game() below.
         try:
             await asyncio.wait_for(self._game_loop_done.wait(), timeout=5.0)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("[Agent] Game loop did not exit in time; proceeding")
 
         try:
@@ -443,7 +444,7 @@ class PokemonAgentController:
         else:
             logger.debug("Unknown event type: %s", etype)
 
-    async def _await_screenshot_file(self, path: Path, timeout: float = 1.0, interval: float = 0.1) -> Optional[Path]:
+    async def _await_screenshot_file(self, path: Path, timeout: float = 1.0, interval: float = 0.1) -> Path | None:
         """Poll for screenshot file existence up to *timeout* seconds.
 
         Returns the path when the file appears, or None if it never arrives
@@ -462,7 +463,7 @@ class PokemonAgentController:
         )
         return None
 
-    async def _capture_screenshot(self, frame_number: int) -> Optional[Path]:
+    async def _capture_screenshot(self, frame_number: int) -> Path | None:
         path = Path(f"data/screenshots/frame_{frame_number:08d}.png")
         try:
             await self.mgba_client.capture_screenshot(str(path))

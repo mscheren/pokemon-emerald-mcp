@@ -4,9 +4,10 @@ All results are cached in the discoveries table under category="pokeapi"
 so each resource is fetched at most once per session (and across sessions).
 Network errors are swallowed and logged — they never crash the agent loop.
 """
+
 import json
 import logging
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
@@ -28,7 +29,7 @@ class PokeAPIClient:
         """Close the underlying HTTP client."""
         await self._http.aclose()
 
-    async def _cached_get(self, url: str, cache_key: str) -> Optional[dict]:
+    async def _cached_get(self, url: str, cache_key: str) -> dict | None:
         """Fetch a URL with cache-aside using the dedicated PokeAPI cache table.
 
         Returns None on network or HTTP errors without raising.
@@ -52,7 +53,7 @@ class PokeAPIClient:
 
         return data
 
-    async def get_pokemon(self, species_id: int) -> Optional[dict]:
+    async def get_pokemon(self, species_id: int) -> dict | None:
         """Fetch Pokemon data: name, types, base stats, and evolution chain.
 
         Args:
@@ -74,25 +75,18 @@ class PokeAPIClient:
 
         name = pokemon_data.get("name", "unknown")
         types = [t["type"]["name"] for t in pokemon_data.get("types", [])]
-        base_stats = {
-            s["stat"]["name"]: s["base_stat"]
-            for s in pokemon_data.get("stats", [])
-        }
+        base_stats = {s["stat"]["name"]: s["base_stat"] for s in pokemon_data.get("stats", [])}
 
         # Fetch species for evolution chain URL
         evolution_chain: list[str] = []
         species_url = (pokemon_data.get("species") or {}).get("url")
         if species_url:
-            species_data = await self._cached_get(
-                species_url, f"pokemon-species:{ndex}"
-            )
+            species_data = await self._cached_get(species_url, f"pokemon-species:{ndex}")
             if species_data:
                 chain_url = (species_data.get("evolution_chain") or {}).get("url")
                 if chain_url:
                     chain_id = chain_url.rstrip("/").split("/")[-1]
-                    chain_data = await self._cached_get(
-                        chain_url, f"evolution-chain:{chain_id}"
-                    )
+                    chain_data = await self._cached_get(chain_url, f"evolution-chain:{chain_id}")
                     if chain_data:
                         evolution_chain = _walk_chain(chain_data.get("chain", {}))
 
@@ -103,7 +97,7 @@ class PokeAPIClient:
             "evolution_chain": evolution_chain,
         }
 
-    async def get_move(self, move_id: int) -> Optional[dict]:
+    async def get_move(self, move_id: int) -> dict | None:
         """Fetch move data: name, type, power, accuracy, PP.
 
         Args:
@@ -113,9 +107,7 @@ class PokeAPIClient:
             Dict with keys ``name``, ``type``, ``power``, ``accuracy``, ``pp``,
             or None on failure.
         """
-        data = await self._cached_get(
-            f"{BASE_URL}/move/{move_id}", f"move:{move_id}"
-        )
+        data = await self._cached_get(f"{BASE_URL}/move/{move_id}", f"move:{move_id}")
         if not data:
             return None
         return {
@@ -126,7 +118,7 @@ class PokeAPIClient:
             "pp": data.get("pp"),
         }
 
-    async def get_item(self, item_id: int) -> Optional[dict]:
+    async def get_item(self, item_id: int) -> dict | None:
         """Fetch item data: name, category, and English effect description.
 
         Args:
@@ -135,9 +127,7 @@ class PokeAPIClient:
         Returns:
             Dict with keys ``name``, ``category``, ``effect``, or None on failure.
         """
-        data = await self._cached_get(
-            f"{BASE_URL}/item/{item_id}", f"item:{item_id}"
-        )
+        data = await self._cached_get(f"{BASE_URL}/item/{item_id}", f"item:{item_id}")
         if not data:
             return None
         effect = ""

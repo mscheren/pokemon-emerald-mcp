@@ -1,10 +1,9 @@
 """Unit tests for PokeAPIClient — happy path, cache hits, and error handling."""
+
 import json
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.agent.pokeapi import PokeAPIClient, _rse_to_ndex, _walk_chain
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -27,13 +26,17 @@ SPECIES_PAYLOAD = {
 CHAIN_PAYLOAD = {
     "chain": {
         "species": {"name": "torchic"},
-        "evolves_to": [{
-            "species": {"name": "combusken"},
-            "evolves_to": [{
-                "species": {"name": "blaziken"},
-                "evolves_to": [],
-            }],
-        }],
+        "evolves_to": [
+            {
+                "species": {"name": "combusken"},
+                "evolves_to": [
+                    {
+                        "species": {"name": "blaziken"},
+                        "evolves_to": [],
+                    }
+                ],
+            }
+        ],
     }
 }
 
@@ -61,10 +64,12 @@ def _make_client(cached=None):
     cached: dict mapping cache_key → payload dict (simulates cache hits).
     """
     kb = MagicMock()
+
     async def _get_cache(key):
         if cached and key in cached:
             return json.dumps(cached[key])
         return None
+
     kb.get_pokeapi_cache = AsyncMock(side_effect=_get_cache)
     kb.set_pokeapi_cache = AsyncMock()
     return PokeAPIClient(knowledge=kb)
@@ -81,6 +86,7 @@ def _mock_response(payload: dict):
 # get_pokemon
 # ---------------------------------------------------------------------------
 
+
 class TestGetPokemon:
     async def test_happy_path(self):
         client = _make_client()
@@ -90,9 +96,9 @@ class TestGetPokemon:
             "https://pokeapi.co/api/v2/pokemon-species/255/": SPECIES_PAYLOAD,
             "https://pokeapi.co/api/v2/evolution-chain/176/": CHAIN_PAYLOAD,
         }
-        with patch.object(client._http, "get", new=AsyncMock(
-            side_effect=lambda url, **kw: _mock_response(responses[url])
-        )):
+        with patch.object(
+            client._http, "get", new=AsyncMock(side_effect=lambda url, **kw: _mock_response(responses[url]))
+        ):
             result = await client.get_pokemon(280)
 
         assert result["name"] == "torchic"
@@ -124,12 +130,11 @@ class TestGetPokemon:
 # get_move
 # ---------------------------------------------------------------------------
 
+
 class TestGetMove:
     async def test_happy_path(self):
         client = _make_client()
-        with patch.object(client._http, "get", new=AsyncMock(
-            return_value=_mock_response(MOVE_PAYLOAD)
-        )):
+        with patch.object(client._http, "get", new=AsyncMock(return_value=_mock_response(MOVE_PAYLOAD))):
             result = await client.get_move(33)
 
         assert result["name"] == "tackle"
@@ -156,12 +161,11 @@ class TestGetMove:
 # get_item
 # ---------------------------------------------------------------------------
 
+
 class TestGetItem:
     async def test_happy_path(self):
         client = _make_client()
-        with patch.object(client._http, "get", new=AsyncMock(
-            return_value=_mock_response(ITEM_PAYLOAD)
-        )):
+        with patch.object(client._http, "get", new=AsyncMock(return_value=_mock_response(ITEM_PAYLOAD))):
             result = await client.get_item(13)
 
         assert result["name"] == "potion"
@@ -170,9 +174,7 @@ class TestGetItem:
 
     async def test_filters_english_effect_only(self):
         client = _make_client()
-        with patch.object(client._http, "get", new=AsyncMock(
-            return_value=_mock_response(ITEM_PAYLOAD)
-        )):
+        with patch.object(client._http, "get", new=AsyncMock(return_value=_mock_response(ITEM_PAYLOAD))):
             result = await client.get_item(13)
         assert "回復" not in result["effect"]
 
@@ -187,9 +189,10 @@ class TestGetItem:
 # Evolution chain helper
 # ---------------------------------------------------------------------------
 
+
 class TestRseToNdex:
     def test_gen1(self):
-        assert _rse_to_ndex(25) == 25   # Pikachu
+        assert _rse_to_ndex(25) == 25  # Pikachu
 
     def test_gen2(self):
         assert _rse_to_ndex(251) == 251  # Celebi
@@ -211,9 +214,9 @@ class TestWalkChain:
     def test_linear(self):
         chain = {
             "species": {"name": "torchic"},
-            "evolves_to": [{"species": {"name": "combusken"}, "evolves_to": [
-                {"species": {"name": "blaziken"}, "evolves_to": []}
-            ]}],
+            "evolves_to": [
+                {"species": {"name": "combusken"}, "evolves_to": [{"species": {"name": "blaziken"}, "evolves_to": []}]}
+            ],
         }
         assert _walk_chain(chain) == ["torchic", "combusken", "blaziken"]
 

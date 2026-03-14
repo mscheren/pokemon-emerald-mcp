@@ -2,6 +2,7 @@
 
 All models are plain dataclasses with no I/O dependencies.
 """
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -14,7 +15,7 @@ class Move:
 
     name: str = "???"
     type: str = "Normal"
-    power: Optional[int] = None
+    power: int | None = None
     pp: int = 0
     max_pp: int = 0
     category: str = "status"  # physical, special, status
@@ -47,15 +48,21 @@ class PartyPokemon:
     sp_attack: int = 0
     sp_defense: int = 0
     status: str = "healthy"
-    species_id: Optional[int] = None
-    species_name: Optional[str] = None
+    species_id: int | None = None
+    species_name: str | None = None
     types: list[str] = field(default_factory=list)
     moves: list[Move] = field(default_factory=list)
     move_ids: list[int] = field(default_factory=list)
 
     _VALID_STATUSES = {
-        "healthy", "poisoned", "badly_poisoned", "paralyzed",
-        "burned", "frozen", "asleep", "fainted",
+        "healthy",
+        "poisoned",
+        "badly_poisoned",
+        "paralyzed",
+        "burned",
+        "frozen",
+        "asleep",
+        "fainted",
     }
 
     def __post_init__(self) -> None:
@@ -147,9 +154,9 @@ class Observation:
 
     game_state: GameState
     frame_number: int
-    screenshot_path: Optional[Path] = None
+    screenshot_path: Path | None = None
     timestamp: datetime = field(default_factory=datetime.utcnow)
-    observation_id: Optional[int] = None
+    observation_id: int | None = None
     extended_state: Optional["ExtendedState"] = None
 
 
@@ -158,7 +165,7 @@ class SequenceStep:
     """One step in a multi-action sequence issued by the agent."""
 
     action: str = "wait"
-    button: Optional[str] = None
+    button: str | None = None
     buttons: list[str] = field(default_factory=list)
     duration_frames: int = 8
     wait_frames: int = 0
@@ -169,8 +176,7 @@ class SequenceStep:
         """Raise ValueError if the step is malformed."""
         if self.action not in self._VALID_ACTIONS:
             raise ValueError(
-                f"Invalid sequence step action: {self.action!r}. "
-                f"Must be one of {sorted(self._VALID_ACTIONS)}"
+                f"Invalid sequence step action: {self.action!r}. Must be one of {sorted(self._VALID_ACTIONS)}"
             )
         if self.action == "press_button" and not self.button:
             raise ValueError("press_button step requires a 'button' field")
@@ -210,10 +216,7 @@ class AgentDecision:
     def validate(self) -> None:
         """Raise ValueError if the decision is malformed."""
         if self.action_type not in self._VALID_ACTIONS:
-            raise ValueError(
-                f"Invalid action_type: {self.action_type!r}. "
-                f"Must be one of {sorted(self._VALID_ACTIONS)}"
-            )
+            raise ValueError(f"Invalid action_type: {self.action_type!r}. Must be one of {sorted(self._VALID_ACTIONS)}")
         if self.action_type == "press_sequence":
             seq = self.action_params.get("sequence", [])
             if not seq:
@@ -233,9 +236,9 @@ class KnowledgeEntry:
     category: str
     title: str
     description: str
-    map_id: Optional[int] = None
-    x_coord: Optional[int] = None
-    y_coord: Optional[int] = None
+    map_id: int | None = None
+    x_coord: int | None = None
+    y_coord: int | None = None
 
 
 @dataclass
@@ -287,7 +290,7 @@ class ExtendedState:
     """Bag and PC box data returned by the get_extended_state action."""
 
     bag: dict[str, list[BagItem]]  # pocket name → items
-    pc_boxes: list[dict]           # [{box, pokemon:[PCPokemon]}]
+    pc_boxes: list[dict]  # [{box, pokemon:[PCPokemon]}]
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ExtendedState":

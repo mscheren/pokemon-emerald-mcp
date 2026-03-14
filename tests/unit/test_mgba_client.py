@@ -4,9 +4,7 @@ These tests use mock streams to verify the client sends correct JSON messages
 and parses responses correctly without requiring a live mGBA instance.
 """
 
-import asyncio
 import json
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
