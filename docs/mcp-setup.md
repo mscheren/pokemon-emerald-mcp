@@ -111,8 +111,8 @@ uv run pokemon-mcp
 Then register with Claude Code or any other CLI agent:
 
 ```bash
-claude mcp add pokemon-agent -- \
-  env ... uv --directory /path/to/pokemon_agent run pokemon-mcp
+claude mcp add pokemon-agent -e K1=v1 -e K2=v2 ... -- \
+  uv --directory /path/to/pokemon_agent run pokemon-mcp
 ```
 
 Verify:

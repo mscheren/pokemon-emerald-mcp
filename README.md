@@ -182,5 +182,5 @@ This should be done automatically on loading the script if the rule does not exi
 uv run pokemon-agent --discover-host
 
 # Or specify the IP manually
-uv run pokemon-agent --no-launch --host 172.21.96.1
+uv run pokemon-agent --no-launch --host 172.29.192.1
 ```

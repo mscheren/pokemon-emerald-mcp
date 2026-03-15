@@ -24,11 +24,11 @@ dev = [
 ]
 
 [project.scripts]
-pokemon-agent = "src.agent.cli:main"
-pokemon-mgba = "src.agent.cli:launch_mgba"
-pokemon-mcp = "src.agent.mcp_server:main"
-pokemon-mcp-admin = "src.agent.mcp_server:admin_stop"
-pokemon-mcp-screenshot = "src.agent.mcp_server:admin_screenshot"
+pokemon-agent = "agent.cli:main"
+pokemon-mgba = "agent.cli:launch_mgba"
+pokemon-mcp = "agent.mcp_server:main"
+pokemon-mcp-admin = "agent.mcp_server:admin_stop"
+pokemon-mcp-screenshot = "agent.mcp_server:admin_screenshot"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
