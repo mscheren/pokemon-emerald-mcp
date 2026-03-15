@@ -4,7 +4,6 @@ These tests run the real MGBAClient and KnowledgeBase against a mock TCP server
 so the full observe → decide → execute cycle can be validated without mGBA.
 """
 
-
 from src.agent.controller import PokemonAgentController
 from src.agent.models import AgentDecision
 from tests.fixtures import mock_mgba  # noqa: F401 — imported for pytest fixture discovery

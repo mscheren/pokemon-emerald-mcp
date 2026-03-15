@@ -671,7 +671,6 @@ class TestDiscoverWindowsHost:
     def test_falls_back_when_no_nameserver(self, tmp_path: Path):
         import re
 
-
         resolv = tmp_path / "resolv.conf"
         resolv.write_text("# no nameserver line\n")
         ip = next(
