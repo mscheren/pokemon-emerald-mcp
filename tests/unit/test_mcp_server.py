@@ -3,9 +3,12 @@
 import io
 from pathlib import Path
 
+import pytest
 from PIL import Image as PILImage
 
-from src.agent.mcp_server import _GRID_OFFSET_X, _GRID_OFFSET_Y, _TILE_PX, _annotate_screenshot
+from src.agent.knowledge import KnowledgeBase
+from src.agent.mcp_server import _GRID_OFFSET_Y, _TILE_PX, _annotate_screenshot, _auto_record_passable
+from src.agent.models import GameState
 
 
 def _make_png(tmp_path: Path, width: int = 240, height: int = 160) -> Path:
@@ -98,16 +101,67 @@ class TestAnnotateScreenshot:
         diff = ImageChops.difference(img_tile, img_none)
         assert diff.getbbox() is not None  # images differ somewhere
 
-    def test_grid_offset_applied(self, tmp_path):
-        """First grid line must be at _GRID_OFFSET_X, not at x=0."""
+    def test_grid_y_offset_applied(self, tmp_path):
+        """First horizontal grid line must be at y=_GRID_OFFSET_Y, not y=0."""
         path = _make_png(tmp_path)
         result = _annotate_screenshot(path, player_x=10, player_y=8, map_tiles=[])
         img = PILImage.open(io.BytesIO(result))
         pixels = img.load()
-        # Pick a y that is in the middle of a tile row, not on any horizontal grid line
-        mid_y = _GRID_OFFSET_Y + _TILE_PX // 2  # 96 — halfway through first tile row
-        # Background pixel at x=0 (no grid line before offset)
-        bg_pixel = pixels[0, mid_y]
-        # Grid line pixel at x=_GRID_OFFSET_X (white blend makes it brighter)
-        grid_pixel = pixels[_GRID_OFFSET_X, mid_y]
+        # _GRID_OFFSET_X=0, so vertical lines are at x=0,64,128…
+        # Pick x=32 (midpoint of first tile column) — not on any vertical grid line
+        mid_x = _TILE_PX // 2  # 32
+        # y=1 is before the first horizontal grid line (_GRID_OFFSET_Y=32)
+        bg_pixel = pixels[mid_x, 1]
+        # y=_GRID_OFFSET_Y is exactly on the first horizontal grid line → brighter
+        grid_pixel = pixels[mid_x, _GRID_OFFSET_Y]
         assert sum(grid_pixel[:3]) > sum(bg_pixel[:3])
+
+
+@pytest.fixture
+async def kb(tmp_path):
+    """Temporary KnowledgeBase backed by a real SQLite file."""
+    db = KnowledgeBase(tmp_path / "test.db")
+    await db.initialize()
+    yield db
+    await db.close()
+
+
+def _gs(map_id=100, player_x=5, player_y=8, in_battle=False) -> GameState:
+    return GameState(map_id=map_id, player_x=player_x, player_y=player_y, in_battle=in_battle)
+
+
+class TestAutoRecordPassable:
+    @pytest.mark.asyncio
+    async def test_records_tile_when_unknown(self, kb):
+        tiles = await _auto_record_passable(kb, _gs(), [])
+        assert any(t["x"] == 5 and t["y"] == 8 and t["tile_type"] == "passable" for t in tiles)
+
+    @pytest.mark.asyncio
+    async def test_returns_updated_tile_list(self, kb):
+        result = await _auto_record_passable(kb, _gs(), [])
+        assert len(result) == 1
+
+    @pytest.mark.asyncio
+    async def test_skips_when_in_battle(self, kb):
+        tiles = await _auto_record_passable(kb, _gs(in_battle=True), [])
+        assert tiles == []
+
+    @pytest.mark.asyncio
+    async def test_skips_when_map_id_zero(self, kb):
+        tiles = await _auto_record_passable(kb, _gs(map_id=0), [])
+        assert tiles == []
+
+    @pytest.mark.asyncio
+    async def test_does_not_overwrite_existing_tile(self, kb):
+        existing = [{"x": 5, "y": 8, "tile_type": "blocked", "notes": None}]
+        await kb.record_tile(map_id=100, x=5, y=8, tile_type="blocked")
+        tiles = await _auto_record_passable(kb, _gs(), existing)
+        # tile_type must remain "blocked"
+        match = next(t for t in tiles if t["x"] == 5 and t["y"] == 8)
+        assert match["tile_type"] == "blocked"
+
+    @pytest.mark.asyncio
+    async def test_persists_to_db(self, kb):
+        await _auto_record_passable(kb, _gs(), [])
+        stored = await kb.get_map_tiles(100)
+        assert any(t["x"] == 5 and t["y"] == 8 for t in stored)

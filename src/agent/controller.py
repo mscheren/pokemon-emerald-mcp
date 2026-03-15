@@ -4,6 +4,7 @@ Orchestrates the observe → decide → act cycle between the agent and the mGBA
 """
 
 import asyncio
+import contextlib
 import logging
 import re
 import signal
@@ -211,10 +212,8 @@ class PokemonAgentController:
             await self.game_loop()
         finally:
             self._input_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._input_task
-            except asyncio.CancelledError:
-                pass
 
         # If shutdown was triggered by a signal, wait for it to finish before
         # returning so asyncio.run() does not cancel the stop task mid-cleanup.
@@ -469,7 +468,7 @@ class PokemonAgentController:
             await self.mgba_client.capture_screenshot(str(path))
             return path
         except Exception as e:
-            logger.warning(f"Screenshot failed: {e}")
+            logger.warning("Screenshot failed: %s", e)
             return None
 
     def _log_observation(self, obs: Observation) -> None:
@@ -490,10 +489,8 @@ class PokemonAgentController:
         """Delete screenshots beyond the most recent N to prevent unbounded disk use."""
         files = sorted(SCREENSHOTS_DIR.glob("frame_*.png"), key=lambda f: f.stat().st_mtime)
         for f in files[:-keep_last]:
-            try:
+            with contextlib.suppress(Exception):
                 f.unlink()
-            except Exception:
-                pass
 
     async def _get_active_guidance_cached(self) -> list[dict]:
         """Return active guidance, refreshing from DB at most once every 5 seconds."""

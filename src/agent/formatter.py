@@ -8,10 +8,8 @@ JSON decision from its text response.
 import json
 import logging
 import re
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from .models import AgentDecision, Observation
+from .models import AgentDecision, Observation
 
 logger = logging.getLogger(__name__)
 
@@ -35,24 +33,36 @@ _TILE_CHARS: dict[str, str] = {
 }
 
 _AGENT_PROTOCOL = """\
-AGENT PROTOCOL
+IMPORTANT INSTRUCTIONS
   Navigation : The screenshot is your PRIMARY navigation guide.
+               You must ALWAYS fully understand the screenshot before acting.
+               Read the screenshot first, use the text state to confirm what you already see,
+               don't attempt to move somewhere the screenshot shows is impassable.
                Your current tile is highlighted with a yellow border in the image.
                Known tile types are labelled in each tile's top-left corner.
-               Take ONE step at a time in unknown terrain — observe after each step.
-               Only batch movement on routes already confirmed passable.
-  Map memory : After every move attempt call record_tile(map_id, x, y, tile_type).
-               This is not optional! Build your spatial map by recording every explored tile.
-               tile_type: passable blocked grass water ledge_south ledge_north
-                          ledge_west ledge_east npc item rock_smash rock_strength
-                          tree_cut unknown
-               Before navigating call get_map_tiles(map_id) to recall known terrain.
+               Tile key: .=passable  X=blocked  ~=grass  W=water
+                         v=ledge↓  ^=ledge↑  <=ledge←  >=ledge→
+                         N=NPC  i=item  r=rock_smash  R=rock_strength  T=tree_cut  ?=unknown
+               IMPORTANT: Objects usually consist of more than one tile.
+               For instance, if one tile is marked as 'ledge' and the visual pattern continues for
+               several tiles in a row, those are likely all part of the same ledge.
+               Take ONE step at a time in unknown terrain (note that the first button press in
+               a new direction turns you instead of moving). Observe after each step.
+               Batch movement on routes already confirmed passable.
+               Every movement, whether single or batched, has to align with the game state
+               and grid show in the screenshot. Always follow the format:
+               Analyze the screenshot -> Confirm with text state -> Plan movement -> Act.
+  Map memory : Call record_tile(map_id, x, y, tile_type) often while exploring.
+               This is not optional! Build your spatial map by recording explored tiles.
+               Before starting navigation on a map, call get_map_tiles(map_id) to recall known terrain.
                Prefer fully passable routes, pass grass tiles to gain EXP or catch Pokemon.
   Knowledge  : Record NPCs, items, events with record_discovery().
                Record badges, captures, evolutions with record_progress().
                Use lookup_pokemon() / lookup_move() before battles for type advantage.
-  Guidance   : get_active_guidance() shows current objectives with their IDs.
-               Mark done objectives: update_guidance_status(id, 'completed').\
+               State claims must be grounded: Never assert facts about game state
+               (inventory, party HP, items, money, badges) without first reading them
+               from an observe or get_extended_state result in the current context.
+               If uncertain, query before claiming.\
 """
 
 
@@ -64,7 +74,6 @@ class ObservationFormatter:
         observation: "Observation",
         active_guidance: list[dict],
         relevant_knowledge: list[dict],
-        map_tiles: list[dict] | None = None,
     ) -> str:
         """Produce the formatted observation text for agent.
 
@@ -72,8 +81,6 @@ class ObservationFormatter:
             observation: Current game observation including state and screenshot.
             active_guidance: Active user guidance entries from the knowledge base.
             relevant_knowledge: Relevant discoveries from the knowledge base.
-            map_tiles: All recorded tiles for the current map, or None to omit
-                the MAP TILES section.
 
         Returns:
             Multi-line string ready to be printed for agent to read.
@@ -94,12 +101,6 @@ class ObservationFormatter:
             lines.append("[WARNING: No screenshot — visual context unavailable this turn]")
             lines.append("")
 
-        lines.append("=" * 60)
-        lines.append("POKEMON EMERALD — GAME STATE")
-        lines.append("=" * 60)
-        lines.append(f"Frame: {observation.frame_number}")
-        lines.append("")
-
         # Player state
         lines.append("PLAYER STATE:")
         lines.append(f"  Location: {gs.map_name} (Map {gs.map_id}) | X:{gs.player_x}, Y:{gs.player_y}")
@@ -108,10 +109,6 @@ class ObservationFormatter:
         else:
             lines.append("  Badges: None yet")
         lines.append(f"  In Battle: {'YES' if gs.in_battle else 'No'}")
-        if map_tiles is not None:
-            lines.append(self._format_neighbours(gs.player_x, gs.player_y, map_tiles))
-        lines.append(f"  Can Save: {'Yes' if gs.can_save else 'No'}")
-        lines.append("")
 
         # Party
         lines.append(f"PARTY ({gs.party_count} Pokemon):")
@@ -169,23 +166,6 @@ class ObservationFormatter:
 
         return "\n".join(lines)
 
-    def _format_neighbours(
-        self,
-        player_x: int,
-        player_y: int,
-        tiles: list[dict],
-    ) -> str:
-        """Return the four cardinal neighbour tile types as a single line.
-
-        Unknown tiles (not yet recorded) are shown as '?'.
-        """
-        lookup: dict[tuple[int, int], str] = {(t["x"], t["y"]): t["tile_type"] for t in tiles}
-        n = lookup.get((player_x, player_y - 1), "?")
-        s = lookup.get((player_x, player_y + 1), "?")
-        e = lookup.get((player_x + 1, player_y), "?")
-        w = lookup.get((player_x - 1, player_y), "?")
-        return f"  Neighbours: N={n}  S={s}  E={e}  W={w}"
-
     def _hp_bar(self, current: int, max_hp: int, width: int = 10) -> str:
         if max_hp == 0:
             return "[----------]"
@@ -214,7 +194,6 @@ class DecisionParser:
         Returns:
             An AgentDecision with validated action_type and action_params.
         """
-        from .models import AgentDecision
 
         json_str = self._extract_json(response_text)
 
@@ -287,7 +266,6 @@ class DecisionParser:
         return {}
 
     def _safe_fallback(self) -> "AgentDecision":
-        from .models import AgentDecision
 
         return AgentDecision(
             action_type="wait",

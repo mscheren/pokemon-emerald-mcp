@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import json
 import logging
 from datetime import UTC, datetime
@@ -253,20 +254,16 @@ class MGBAClient:
         Errors are swallowed because the connection may already be closing
         when this is called during controller teardown.
         """
-        try:
+        with contextlib.suppress(Exception):
             await self.send_request("shutdown")
-        except Exception:
-            pass
 
     async def disconnect(self) -> None:
         """Close the TCP connection to mGBA gracefully."""
         self._connected = False
         if self.writer:
             self.writer.close()
-            try:
+            with contextlib.suppress(Exception):
                 await self.writer.wait_closed()
-            except Exception:
-                pass
         logger.info("Disconnected from mGBA")
 
     async def reconnect(self, retries: int = 3, delay: float = 2.0) -> bool:

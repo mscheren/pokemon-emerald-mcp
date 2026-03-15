@@ -1,6 +1,5 @@
 """Unit tests for ObservationFormatter and DecisionParser."""
 
-
 from src.agent.formatter import DecisionParser, ObservationFormatter
 from src.agent.models import BagItem, ExtendedState, GameState, Observation, PartyPokemon, PCPokemon
 
@@ -233,52 +232,20 @@ class TestFormatterExtendedState:
         assert "PC BOXES:" not in text
 
 
-class TestNeighboursSection:
-    """Tests for the Neighbours: line replacing the ASCII MAP TILES grid."""
+class TestPlayerStateSection:
+    """Tests for the PLAYER STATE section of the formatted observation."""
 
-    def _tiles_around(self, px=5, py=7):
-        """Tiles for all four cardinal neighbours of (px, py)."""
-        return [
-            {"x": px, "y": py - 1, "tile_type": "ledge_south", "notes": None},  # N
-            {"x": px, "y": py + 1, "tile_type": "grass", "notes": None},  # S
-            {"x": px + 1, "y": py, "tile_type": "passable", "notes": None},  # E
-            {"x": px - 1, "y": py, "tile_type": "blocked", "notes": None},  # W
-        ]
-
-    def test_format_includes_agent_protocol(self):
+    def test_format_includes_instructions(self):
         obs = _make_observation()
         text = ObservationFormatter().format(obs, [], [])
-        assert "AGENT PROTOCOL" in text
+        assert "IMPORTANT INSTRUCTIONS" in text
 
-    def test_neighbours_line_present_when_tiles_passed(self):
+    def test_no_neighbours_line(self):
         obs = _make_observation()
-        text = ObservationFormatter().format(obs, [], [], map_tiles=self._tiles_around())
-        assert "Neighbours:" in text
-
-    def test_neighbours_correct_values(self):
-        # _make_observation() uses player_x=5, player_y=7
-        obs = _make_observation()
-        text = ObservationFormatter().format(obs, [], [], map_tiles=self._tiles_around())
-        assert "N=ledge_south" in text
-        assert "S=grass" in text
-        assert "E=passable" in text
-        assert "W=blocked" in text
-
-    def test_neighbours_unknown_when_not_recorded(self):
-        obs = _make_observation()
-        text = ObservationFormatter().format(obs, [], [], map_tiles=[])
-        assert "N=?" in text
-        assert "S=?" in text
-        assert "E=?" in text
-        assert "W=?" in text
-
-    def test_no_neighbours_line_when_map_tiles_is_none(self):
-        obs = _make_observation()
-        text = ObservationFormatter().format(obs, [], [], map_tiles=None)
+        text = ObservationFormatter().format(obs, [], [])
         assert "Neighbours:" not in text
 
     def test_no_map_tiles_ascii_grid(self):
         obs = _make_observation()
-        # MAP TILES ascii grid should never appear regardless of tile data
-        text = ObservationFormatter().format(obs, [], [], map_tiles=self._tiles_around())
+        text = ObservationFormatter().format(obs, [], [])
         assert "MAP TILES" not in text

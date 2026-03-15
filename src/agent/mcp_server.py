@@ -10,9 +10,11 @@ Environment variables:
     KB_PATH        — SQLite knowledge-base path (default: data/knowledge/pokemon_knowledge.db)
 """
 
+import asyncio
 import io
 import logging
 import os
+import re
 import signal
 import subprocess
 from contextlib import asynccontextmanager
@@ -73,8 +75,8 @@ _CAM_ROW = 4  # player tile row in the 10-tall viewport (0-indexed)
 #                              VOFS = player_y*16 - DISPLAY_HEIGHT/2 (80)
 # → first metatile boundary on screen at x=120−7×16=8 native (32 at 4×)
 #                                        y= 80−4×16=16 native (64 at 4×)
-_GRID_OFFSET_X = 32  # 8 native px → 32 at 4× (HOFS uses DISPLAY_WIDTH/2)
-_GRID_OFFSET_Y = 64  # 16 native px → 64 at 4× (VOFS uses DISPLAY_HEIGHT/2)
+_GRID_OFFSET_X = 0  # no horizontal offset — x=0,64,128… already aligns with tile boundaries
+_GRID_OFFSET_Y = 32  # 8 native px → 32 at 4× (VOFS formula has 8px sub-tile offset)
 
 # Per-tile-type label colors (RGB) for the screenshot overlay
 _TILE_LABEL_COLORS: dict[str, tuple[int, int, int]] = {
@@ -245,6 +247,37 @@ mcp = FastMCP("pokemon-agent", lifespan=_lifespan)
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+async def _auto_record_passable(
+    kb: "KnowledgeBase",
+    game_state: "GameState",
+    map_tiles: list[dict],
+) -> list[dict]:
+    """Record the player's current tile as passable when it is not yet known.
+
+    Skipped when in battle or when map_id is 0 (unknown map).
+    Never overwrites an existing annotation.
+
+    Returns the (possibly refreshed) map_tiles list.
+    """
+    if not game_state.map_id or game_state.in_battle:
+        return map_tiles
+    known = {(t["x"], t["y"]) for t in map_tiles}
+    if (game_state.player_x, game_state.player_y) not in known:
+        await kb.record_tile(
+            map_id=game_state.map_id,
+            x=game_state.player_x,
+            y=game_state.player_y,
+            tile_type="passable",
+        )
+        map_tiles = await kb.get_map_tiles(game_state.map_id)
+    return map_tiles
+
+
+# ---------------------------------------------------------------------------
 # Tools
 # ---------------------------------------------------------------------------
 
@@ -274,6 +307,10 @@ async def observe() -> list:
         map_tiles = await _get_kb().get_map_tiles(game_state.map_id)
     except Exception:
         pass
+    try:
+        map_tiles = await _auto_record_passable(_get_kb(), game_state, map_tiles)
+    except Exception:
+        logger.warning("auto_record_passable failed", exc_info=True)
 
     # Capture screenshot via Lua emu:screenshot()
     # GameController.request_screenshot() writes frame_XXXXXXXX.png and returns
@@ -297,7 +334,7 @@ async def observe() -> list:
         frame_number=game_state.frame_number,
         screenshot_path=screenshot_path,
     )
-    obs_text = _formatter.format(observation, guidance, knowledge, map_tiles)
+    obs_text = _formatter.format(observation, guidance, knowledge)
     OBSERVATION_FILE.write_text(obs_text)
 
     content: list = []
@@ -755,6 +792,76 @@ def admin_stop() -> None:
             print(f"PID {pid} already gone.")
 
     print("MCP server will restart automatically on the next tool call.")
+
+
+def admin_screenshot() -> None:
+    """CLI entry point: save the current annotated screenshot.
+
+    Reads player state from ``data/current_observation.txt`` (written by the
+    running MCP server) and the latest screenshot from SCREENSHOT_DIR, so no
+    mGBA connection is required — works even when a Claude MCP session is live.
+
+    Respects the same environment variables as the MCP server:
+        SCREENSHOT_DIR (default: data/screenshots)
+        KB_PATH        (default: data/knowledge/knowledge.db)
+        OBS_FILE       (default: data/current_observation.txt)
+
+    Usage::
+
+        uv run pokemon-mcp-screenshot
+    """
+
+    # Load .env from project root (no-op if absent; real env vars take precedence)
+    _env_file = Path(__file__).parent.parent.parent / ".env"
+    if _env_file.exists():
+        for _line in _env_file.read_text().splitlines():
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _, _v = _line.partition("=")
+                os.environ.setdefault(_k.strip(), _v.strip())
+
+    def _parse_obs(obs_path: Path) -> tuple[int, int, int, bool]:
+        """Return (player_x, player_y, map_id, in_battle) from observation txt."""
+        text = obs_path.read_text()
+        loc = re.search(r"Location:.*\(Map (\d+)\) \| X:(\d+), Y:(\d+)", text)
+        if not loc:
+            raise ValueError(f"Cannot parse location from {obs_path}")
+        map_id = int(loc.group(1))
+        player_x = int(loc.group(2))
+        player_y = int(loc.group(3))
+        in_battle = bool(re.search(r"In Battle: Yes", text))
+        return player_x, player_y, map_id, in_battle
+
+    async def _run() -> None:
+        screenshot_dir = Path(os.environ.get("SCREENSHOT_DIR", "data/screenshots"))
+        kb_path = Path(os.environ.get("KB_PATH", "data/knowledge/knowledge.db"))
+        obs_path = Path(os.environ.get("OBS_FILE", "data/current_observation.txt"))
+
+        player_x, player_y, map_id, in_battle = _parse_obs(obs_path)
+
+        kb = KnowledgeBase(kb_path)
+        await kb.initialize()
+        map_tiles = await kb.get_map_tiles(map_id)
+        await kb.close()
+
+        pngs = sorted(screenshot_dir.glob("*.png"), key=lambda p: p.stat().st_mtime)
+        if not pngs:
+            raise FileNotFoundError(f"No screenshots in {screenshot_dir}")
+        screenshot_path = pngs[-1]
+
+        result = _annotate_screenshot(
+            screenshot_path,
+            player_x,
+            player_y,
+            map_tiles,
+            in_battle=in_battle,
+        )
+
+        out = Path("annotated_preview.png")
+        out.write_bytes(result)
+        print(f"Saved {out}  (Map {map_id} | x={player_x}, y={player_y} | {len(map_tiles)} tiles)")
+
+    asyncio.run(_run())
 
 
 if __name__ == "__main__":

@@ -19,7 +19,7 @@ def _discover_windows_host() -> str:
     """
     resolv = Path("/etc/resolv.conf")
     if resolv.exists():
-        for line in resolv.read_text().splitlines():
+        for line in resolv.read_text(encoding="utf-8").splitlines():
             m = re.match(r"^\s*nameserver\s+(\S+)", line)
             if m:
                 return m.group(1)
@@ -188,7 +188,7 @@ def launch_mgba() -> None:
     cmd = [str(MGBA_BINARY), "--script", str(args.lua_script), str(args.rom)]
     print(f"Launching mGBA: {' '.join(cmd)}")
     print("Load your save, then run: pokemon-agent --no-launch")
-    subprocess.run(cmd)
+    subprocess.run(cmd, check=False)
 
 
 if __name__ == "__main__":

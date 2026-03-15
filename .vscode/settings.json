@@ -1,0 +1,19 @@
+{
+  // Formatters
+  "editor.formatOnSave": true,
+  // Python-specific settings
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "never",
+      "source.organizeImports.ruff": "explicit"
+    }
+  },
+  // Ruff settings (using native language server)
+  "ruff.lineLength": 120,
+  "ruff.nativeServer": true,
+  "ruff.organizeImports": true,
+  "python-envs.defaultEnvManager": "ms-python.python:venv",
+  "python-envs.defaultPackageManager": "ms-python.python:venv"
+}

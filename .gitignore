@@ -1,6 +1,7 @@
 # Pokemon Agent
 venv/
 .venv/
+.env
 __pycache__/
 *.pyc
 .pytest_cache/
@@ -10,7 +11,9 @@ data/current_observation.txt
 run_log.log
 *.db
 *.db-journal
-.vscode/
+annotated_preview.png
+
+# AI Tools
 .claude/
 .codex/
 .opencode/
